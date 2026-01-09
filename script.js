@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  // ---------- On-screen debug ----------
+  // ------------------- Debug pill -------------------
   const dbg = document.createElement("div");
   dbg.style.cssText = `
     position:fixed; left:10px; top:10px; z-index:999999;
@@ -22,10 +22,9 @@
   window.addEventListener("error", (ev) => showErr(ev.error || ev.message));
   window.addEventListener("unhandledrejection", (ev) => showErr(ev.reason));
 
-  // ---------- Helpers ----------
+  // ------------------- Helpers -------------------
   const $ = (id) => document.getElementById(id);
   const fmt = (n) => "$" + Math.max(0, Math.round(n)).toLocaleString();
-
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const rand = (a, b) => a + Math.random() * (b - a);
   const randi = (a, b) => Math.floor(rand(a, b + 1));
@@ -45,7 +44,7 @@
     return a + normAng(b - a) * t;
   }
 
-  // ---------- DOM ----------
+  // ------------------- DOM -------------------
   const canvas = $("simCanvas") || $("c");
   if (!canvas) return showErr("Canvas not found (expected #simCanvas).");
 
@@ -57,49 +56,218 @@
   const elMcap = $("mcap");
   const elColonies = $("colonies");
   const elWorms = $("worms");
-  const logEl = $("log"); // your “Sim Events” list should have id="log"
+  const logEl = $("log"); // event list
 
-  // ---------- Events UI: make it readable + capped + scroll ----------
-  function styleEventLogIfPresent() {
-    if (!logEl) return;
-    // Make sure it’s visible + scrollable (works even if CSS is off)
-    logEl.style.cssText += `
-      max-height: min(180px, 28vh);
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-      padding: 10px 10px;
-      border-radius: 14px;
-      border: 1px solid rgba(255,255,255,.10);
-      background: rgba(0,0,0,.42);
-      backdrop-filter: blur(10px);
-      color: rgba(235,240,248,.92);
-      font: 600 12px/1.35 system-ui, -apple-system, Inter, sans-serif;
-    `;
-    // If parent exists and is too short, give it breathing room (best-effort)
-    const p = logEl.parentElement;
-    if (p) {
-      const cs = getComputedStyle(p);
-      if (cs.display === "grid" || cs.display === "flex") {
-        p.style.alignItems = "stretch";
-      }
+  // ------------------- Canvas sizing (FIXED) -------------------
+  let W = 1, H = 1, DPR = 1;
+
+  function resizeCanvas() {
+    const rect = canvas.getBoundingClientRect();
+    W = Math.max(1, rect.width);
+    H = Math.max(1, rect.height);
+    DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+
+    // Set real buffer in device pixels
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+
+    // IMPORTANT: do NOT leave ctx in a mixed transform state.
+    // We will set transforms per frame.
+    buildBackground();
+  }
+
+  window.addEventListener("resize", resizeCanvas, { passive: true });
+  window.addEventListener("orientationchange", () => setTimeout(resizeCanvas, 120));
+  setTimeout(resizeCanvas, 0);
+
+  // ------------------- Background (stars/galaxies/nebulas) -------------------
+  const bg = {
+    starsNear: [],
+    starsFar: [],
+    nebulas: [],
+  };
+
+  function buildBackground() {
+    bg.starsNear.length = 0;
+    bg.starsFar.length = 0;
+    bg.nebulas.length = 0;
+
+    // Far stars
+    const farCount = Math.floor(clamp((W * H) / 12000, 90, 320));
+    for (let i = 0; i < farCount; i++) {
+      bg.starsFar.push({
+        x: Math.random(), y: Math.random(),
+        r: rand(0.5, 1.15),
+        a: rand(0.18, 0.55),
+        tw: rand(0.6, 1.7),
+        ph: rand(0, TAU),
+      });
+    }
+
+    // Near stars
+    const nearCount = Math.floor(clamp((W * H) / 22000, 60, 160));
+    for (let i = 0; i < nearCount; i++) {
+      bg.starsNear.push({
+        x: Math.random(), y: Math.random(),
+        r: rand(0.9, 2.2),
+        a: rand(0.30, 0.95),
+        tw: rand(0.9, 2.2),
+        ph: rand(0, TAU),
+      });
+    }
+
+    // Nebulas / galaxies
+    const nebCount = clamp(Math.floor((W * H) / 200000), 3, 6);
+    const palette = [
+      [180, 0.24], // teal
+      [210, 0.20], // blue
+      [275, 0.18], // purple
+      [330, 0.14], // pink
+      [140, 0.12], // green haze
+    ];
+
+    for (let i = 0; i < nebCount; i++) {
+      const [hue, alpha] = palette[randi(0, palette.length - 1)];
+      bg.nebulas.push({
+        x: Math.random(),
+        y: Math.random(),
+        r: rand(0.32, 0.62),      // fraction of min(W,H)
+        hue,
+        a: alpha * rand(0.7, 1.35),
+        ph: rand(0, TAU),
+      });
     }
   }
 
-  // ---------- Log (cap + spam merge) ----------
-  // This is ONLY for sim events/mutations/boss/colony/worm hatch.
+  function drawBackground(time, camX, camY) {
+    // Always draw in CSS pixels, but with DPR transform active.
+    // Clear ENTIRE buffer in device pixels to prevent tiling artifacts.
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Switch to CSS pixel space
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    // Base
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, W, H);
+
+    // Nebulas with slight parallax
+    const minDim = Math.min(W, H);
+    const px = camX * 0.00025;
+    const py = camY * 0.00025;
+
+    for (const n of bg.nebulas) {
+      const cx = ((n.x + px) % 1 + 1) % 1 * W;
+      const cy = ((n.y + py) % 1 + 1) % 1 * H;
+      const rr = n.r * minDim;
+
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, rr);
+      g.addColorStop(0, `hsla(${n.hue}, 95%, 62%, ${n.a})`);
+      g.addColorStop(0.55, `hsla(${(n.hue + 40) % 360}, 95%, 58%, ${n.a * 0.55})`);
+      g.addColorStop(1, `hsla(${n.hue}, 95%, 62%, 0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(cx, cy, rr, 0, TAU);
+      ctx.fill();
+    }
+
+    // Far stars
+    const fx = camX * 0.00045;
+    const fy = camY * 0.00045;
+    for (const s of bg.starsFar) {
+      const tw = 0.5 + 0.5 * Math.sin(time * 0.0012 * s.tw + s.ph);
+      ctx.globalAlpha = s.a * (0.65 + tw * 0.6);
+      ctx.fillStyle = "rgba(235,245,255,1)";
+      const x = (((s.x + fx) % 1) + 1) % 1 * W;
+      const y = (((s.y + fy) % 1) + 1) % 1 * H;
+      ctx.beginPath();
+      ctx.arc(x, y, s.r, 0, TAU);
+      ctx.fill();
+    }
+
+    // Near stars
+    const nx = camX * 0.0008;
+    const ny = camY * 0.0008;
+    for (const s of bg.starsNear) {
+      const tw = 0.5 + 0.5 * Math.sin(time * 0.0016 * s.tw + s.ph);
+      ctx.globalAlpha = s.a * (0.6 + tw * 0.85);
+      ctx.fillStyle = "rgba(255,255,255,1)";
+      const x = (((s.x + nx) % 1) + 1) % 1 * W;
+      const y = (((s.y + ny) % 1) + 1) % 1 * H;
+      ctx.beginPath();
+      ctx.arc(x, y, s.r, 0, TAU);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Vignette
+    const vg = ctx.createRadialGradient(W * 0.5, H * 0.45, 10, W * 0.5, H * 0.45, Math.max(W, H) * 0.75);
+    vg.addColorStop(0, "rgba(0,0,0,0)");
+    vg.addColorStop(1, "rgba(0,0,0,0.6)");
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // ------------------- Event panel (FORCE FIX) -------------------
   const LOG_CAP = 80;
   let lastLog = { msg: "", t: 0, count: 0 };
+
+  function forceStyleEventLog() {
+    if (!logEl) return;
+
+    // If #log is an input, we can still write into it
+    const isInput = logEl.tagName === "INPUT" || logEl.tagName === "TEXTAREA";
+
+    if (!isInput) {
+      logEl.style.cssText += `
+        display:block !important;
+        min-height: 120px !important;
+        max-height: min(220px, 30vh) !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        padding: 10px 10px !important;
+        border-radius: 14px !important;
+        border: 1px solid rgba(255,255,255,.10) !important;
+        background: rgba(0,0,0,.42) !important;
+        backdrop-filter: blur(10px) !important;
+        color: rgba(235,240,248,.92) !important;
+        font: 600 12px/1.35 system-ui, -apple-system, Inter, sans-serif !important;
+      `;
+    } else {
+      logEl.style.cssText += `
+        width:100% !important;
+        min-height: 120px !important;
+        padding: 10px !important;
+        border-radius: 14px !important;
+        border: 1px solid rgba(255,255,255,.10) !important;
+        background: rgba(0,0,0,.42) !important;
+        color: rgba(235,240,248,.92) !important;
+      `;
+    }
+  }
+
   function logEvent(msg, kind = "EVENT") {
     if (!logEl) return;
+
     const now = Date.now();
     if (msg === lastLog.msg && now - lastLog.t < 1300) {
       lastLog.count++;
-      const top = logEl.firstChild;
-      if (top) top.textContent = `${kind}: ${msg} (x${lastLog.count})`;
+      if (logEl.tagName === "INPUT" || logEl.tagName === "TEXTAREA") {
+        logEl.value = `${kind}: ${msg} (x${lastLog.count})\n` + logEl.value;
+      } else {
+        const top = logEl.firstChild;
+        if (top) top.textContent = `${kind}: ${msg} (x${lastLog.count})`;
+      }
       lastLog.t = now;
       return;
     }
     lastLog = { msg, t: now, count: 1 };
+
+    if (logEl.tagName === "INPUT" || logEl.tagName === "TEXTAREA") {
+      logEl.value = `${kind}: ${msg}\n` + logEl.value;
+      return;
+    }
 
     const d = document.createElement("div");
     d.textContent = `${kind}: ${msg}`;
@@ -116,166 +284,15 @@
     while (logEl.children.length > LOG_CAP) logEl.removeChild(logEl.lastChild);
   }
 
-  // ---------- Canvas sizing (iOS safe + performance) ----------
-  let W = 1, H = 1, DPR = 1;
-
-  // ---------- Starfield / Galaxy Background (screen-space, smooth) ----------
-  const bg = {
-    starsNear: [],
-    starsFar: [],
-    nebulas: [],
-    seed: Math.random() * 1e9,
-    builtFor: { w: 0, h: 0 },
-  };
-
-  function buildBackground() {
-    bg.starsNear.length = 0;
-    bg.starsFar.length = 0;
-    bg.nebulas.length = 0;
-    bg.builtFor = { w: W, h: H };
-
-    // Far stars (lots, tiny)
-    const farCount = Math.floor(clamp((W * H) / 14000, 70, 220));
-    for (let i = 0; i < farCount; i++) {
-      bg.starsFar.push({
-        x: Math.random(), y: Math.random(),
-        r: rand(0.5, 1.2),
-        a: rand(0.25, 0.55),
-        tw: rand(0.6, 1.6),
-        ph: rand(0, TAU),
-      });
-    }
-
-    // Near stars (fewer, brighter)
-    const nearCount = Math.floor(clamp((W * H) / 26000, 35, 120));
-    for (let i = 0; i < nearCount; i++) {
-      bg.starsNear.push({
-        x: Math.random(), y: Math.random(),
-        r: rand(0.9, 2.2),
-        a: rand(0.35, 0.85),
-        tw: rand(0.9, 2.1),
-        ph: rand(0, TAU),
-      });
-    }
-
-    // Nebulas / galaxies (big soft blobs)
-    const nebCount = clamp(Math.floor((W * H) / 220000), 2, 5);
-    const palette = [
-      [180, 0.22], // teal
-      [210, 0.18], // blue
-      [280, 0.16], // purple
-      [330, 0.12], // pink
-      [140, 0.10], // green haze
-    ];
-
-    for (let i = 0; i < nebCount; i++) {
-      const [hue, alpha] = palette[randi(0, palette.length - 1)];
-      bg.nebulas.push({
-        x: Math.random(),
-        y: Math.random(),
-        r: rand(0.28, 0.55),   // as fraction of min(W,H)
-        hue,
-        a: alpha * rand(0.75, 1.25),
-        spin: rand(-0.25, 0.25),
-        ph: rand(0, TAU),
-      });
-    }
-  }
-
-  function drawBackground(time, camX, camY) {
-    // screen-space background (no camera transform), but parallax uses cam
-    // Fill base
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, W, H);
-
-    // subtle vignette
-    const vg = ctx.createRadialGradient(W * 0.5, H * 0.45, 10, W * 0.5, H * 0.45, Math.max(W, H) * 0.75);
-    vg.addColorStop(0, "rgba(0,0,0,0)");
-    vg.addColorStop(1, "rgba(0,0,0,0.55)");
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, W, H);
-
-    // Nebulas (parallax slow)
-    const minDim = Math.min(W, H);
-    const px = camX * 0.00025;
-    const py = camY * 0.00025;
-
-    for (const n of bg.nebulas) {
-      const cx = (n.x + px) * W;
-      const cy = (n.y + py) * H;
-      const rr = n.r * minDim;
-
-      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, rr);
-      g.addColorStop(0, `hsla(${n.hue}, 90%, 60%, ${n.a})`);
-      g.addColorStop(0.55, `hsla(${(n.hue + 40) % 360}, 90%, 55%, ${n.a * 0.55})`);
-      g.addColorStop(1, `hsla(${n.hue}, 90%, 60%, 0)`);
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(cx, cy, rr, 0, TAU);
-      ctx.fill();
-    }
-
-    // Far stars (tiny, slow parallax)
-    const fx = camX * 0.00045;
-    const fy = camY * 0.00045;
-    for (const s of bg.starsFar) {
-      const tw = 0.5 + 0.5 * Math.sin(time * 0.0012 * s.tw + s.ph);
-      ctx.globalAlpha = s.a * (0.65 + tw * 0.6);
-      ctx.fillStyle = "rgba(235,245,255,1)";
-      const x = ((s.x + fx) % 1 + 1) % 1 * W;
-      const y = ((s.y + fy) % 1 + 1) % 1 * H;
-      ctx.beginPath();
-      ctx.arc(x, y, s.r, 0, TAU);
-      ctx.fill();
-    }
-
-    // Near stars (brighter, a bit more parallax)
-    const nx = camX * 0.0008;
-    const ny = camY * 0.0008;
-    for (const s of bg.starsNear) {
-      const tw = 0.5 + 0.5 * Math.sin(time * 0.0016 * s.tw + s.ph);
-      ctx.globalAlpha = s.a * (0.6 + tw * 0.8);
-      ctx.fillStyle = "rgba(255,255,255,1)";
-      const x = ((s.x + nx) % 1 + 1) % 1 * W;
-      const y = ((s.y + ny) % 1 + 1) % 1 * H;
-      ctx.beginPath();
-      ctx.arc(x, y, s.r, 0, TAU);
-      ctx.fill();
-    }
-
-    // vignette overlay
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = vg;
-    ctx.fillRect(0, 0, W, H);
-
-    ctx.restore();
-  }
-
-  function resizeCanvas() {
-    const rect = canvas.getBoundingClientRect();
-    DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-    W = Math.max(1, rect.width);
-    H = Math.max(1, rect.height);
-    canvas.width = Math.floor(W * DPR);
-    canvas.height = Math.floor(H * DPR);
-    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-
-    buildBackground(); // rebuild stars/galaxies on resize
-  }
-
-  window.addEventListener("resize", resizeCanvas, { passive: true });
-  window.addEventListener("orientationchange", () => setTimeout(resizeCanvas, 120));
-  setTimeout(resizeCanvas, 0);
-
-  // ---------- Economy / triggers ----------
+  // ------------------- Economy / triggers -------------------
   let buyers = 0;
   let volume = 0;
   let mcap = 0;
 
-  // UPDATED per your request
-  const MAX_COLONIES = 16;   // was 8
-  const MC_STEP = 25000;     // was 50,000
+  // Requested updates
+  const MAX_COLONIES = 16;
+  const MC_STEP = 25000;
+
   let nextSplitAt = MC_STEP;
   let bossSpawned = false;
 
@@ -283,12 +300,11 @@
     return (mcap / 20000) + (volume / 6000) + (buyers / 10);
   }
 
-  // ---------- Camera + interaction ----------
+  // ------------------- Camera + interaction -------------------
   let camX = 0, camY = 0, zoom = 0.78;
   let dragging = false, lastX = 0, lastY = 0;
   let selected = 0;
   let focusOn = false;
-
   let isInteracting = false;
 
   function toWorld(px, py) {
@@ -370,7 +386,7 @@
     camY = lerp(camY, -c.y, 0.18);
   }
 
-  // ---------- Colony / worm models ----------
+  // ------------------- Colony / worm models -------------------
   function newColony(x, y, hue = rand(0, 360)) {
     const dna = {
       hue,
@@ -387,7 +403,7 @@
       ox: rand(-70, 70),
       oy: rand(-70, 70),
       r: rand(50, 110),
-      ph: rand(0, Math.PI * 2),
+      ph: rand(0, TAU),
       sp: rand(0.4, 1.2)
     }));
 
@@ -417,12 +433,12 @@
       width: big ? rand(7, 11) : rand(4.2, 7),
       speed: big ? rand(0.38, 0.75) : rand(0.5, 1.05),
       turn: rand(0.008, 0.02) * col.dna.chaos,
-      phase: rand(0, Math.PI * 2),
+      phase: rand(0, TAU),
       limbs: [],
       segs: [],
       isBoss: false,
 
-      // orbit anchor: spreads worms around colony (fixes “all go right”)
+      // FIX: distribute worms around colony instead of biasing a direction
       anchorAng: rand(0, TAU),
       anchorRad: big ? rand(120, 220) : rand(90, 190),
       anchorDrift: rand(0.12, 0.35) * (Math.random() < 0.5 ? -1 : 1),
@@ -430,7 +446,7 @@
 
     let px = col.x + rand(-55, 55);
     let py = col.y + rand(-55, 55);
-    let ang = rand(0, Math.PI * 2);
+    let ang = rand(0, TAU);
 
     for (let i = 0; i < segCount; i++) {
       w.segs.push({ x: px, y: py, a: ang, len: baseLen * rand(0.85, 1.22) });
@@ -438,7 +454,6 @@
       py -= Math.sin(ang) * baseLen;
       ang += rand(-0.3, 0.3) * col.dna.chaos;
     }
-
     return w;
   }
 
@@ -447,7 +462,7 @@
   colonies[0].worms.push(newWorm(colonies[0], false));
   colonies[0].worms.push(newWorm(colonies[0], true));
 
-  // ---------- Fit view ----------
+  // ------------------- Fit view -------------------
   function zoomOutToFitAll() {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     const pad = 420;
@@ -471,12 +486,12 @@
     camY = -cy;
   }
 
-  // ---------- Events / mechanics ----------
+  // ------------------- Effects -------------------
   function shockwave(col, strength = 1) {
     col.shock.push({ r: 0, v: 2.6 + strength * 1.2, a: 0.85, w: 2 + strength });
   }
 
-  function addLimb(w, col, big = false) {
+  function addLimb(w, big = false) {
     if (!w.segs.length) return;
     const at = randi(2, w.segs.length - 3);
     w.limbs.push({
@@ -496,7 +511,7 @@
       boss.width *= 1.6;
       boss.speed *= 0.7;
       boss.hue = 120;
-      for (let i = 0; i < 4; i++) addLimb(boss, c, true);
+      for (let i = 0; i < 4; i++) addLimb(boss, true);
       c.worms.push(boss);
       bossSpawned = true;
       shockwave(c, 1.4);
@@ -507,7 +522,7 @@
   function trySplitByMcap() {
     while (mcap >= nextSplitAt && colonies.length < MAX_COLONIES) {
       const base = colonies[0];
-      const ang = rand(0, Math.PI * 2);
+      const ang = rand(0, TAU);
       const dist = rand(220, 360);
       const nc = newColony(
         base.x + Math.cos(ang) * dist,
@@ -535,7 +550,7 @@
 
     if (r < 0.30) {
       w.hue = (w.hue + rand(30, 140)) % 360;
-      logEvent(`Color shift • Worm ${w.id} (Colony #${colonies.indexOf(c) + 1})`, "MUTATION");
+      logEvent(`Color shift • Worm ${w.id}`, "MUTATION");
     } else if (r < 0.56) {
       w.speed *= rand(1.05, 1.25);
       logEvent(`Aggression spike • Worm ${w.id}`, "MUTATION");
@@ -543,21 +558,20 @@
       w.width = clamp(w.width * rand(1.05, 1.25), 3.5, 16);
       logEvent(`Body growth • Worm ${w.id}`, "MUTATION");
     } else {
-      addLimb(w, c, Math.random() < 0.35);
+      addLimb(w, Math.random() < 0.35);
       logEvent(`Limb growth • Worm ${w.id}`, "MUTATION");
     }
 
     if (Math.random() < 0.22) shockwave(c, 0.9);
   }
 
-  // ---------- Worm population scaling ----------
+  // ------------------- Worm scaling -------------------
   let mutTimer = 0;
   let spawnTimer = 0;
 
   function maybeSpawnWorms(dt) {
     const g = growthScore();
     const target = clamp(Math.floor(3 + g * 2.2), 3, 110);
-
     const total = colonies.reduce((a, c) => a + c.worms.length, 0);
     if (total >= target) return;
 
@@ -572,42 +586,18 @@
     }
   }
 
-  // ---------- Controls (kept; logging only for sim events, not buys/sells) ----------
+  // ------------------- Controls -------------------
   function bind(action, fn) {
     const btn = document.querySelector(`button[data-action="${action}"]`);
     if (btn) btn.addEventListener("click", fn);
   }
 
-  bind("feed", () => {
-    volume += rand(20, 90);
-    mcap += rand(120, 460);
-    // no event log here by your request
-  });
-
-  bind("smallBuy", () => {
-    buyers += 1;
-    volume += rand(180, 900);
-    mcap += rand(900, 3200);
-  });
-
-  bind("whaleBuy", () => {
-    buyers += randi(2, 5);
-    volume += rand(2500, 8500);
-    mcap += rand(9000, 22000);
-    shockwave(colonies[0], 1.2);
-  });
-
-  bind("sell", () => {
-    volume = Math.max(0, volume - rand(600, 2600));
-    mcap = Math.max(0, mcap - rand(2200, 9000));
-  });
-
-  bind("storm", () => {
-    volume += rand(5000, 18000);
-    mcap += rand(2000, 8000);
-    shockwave(colonies[0], 1.0);
-  });
-
+  // Keep mechanics; no buy/sell events in log (per your request)
+  bind("feed", () => { volume += rand(20, 90); mcap += rand(120, 460); });
+  bind("smallBuy", () => { buyers += 1; volume += rand(180, 900); mcap += rand(900, 3200); });
+  bind("whaleBuy", () => { buyers += randi(2, 5); volume += rand(2500, 8500); mcap += rand(9000, 22000); shockwave(colonies[0], 1.2); });
+  bind("sell", () => { volume = Math.max(0, volume - rand(600, 2600)); mcap = Math.max(0, mcap - rand(2200, 9000)); });
+  bind("storm", () => { volume += rand(5000, 18000); mcap += rand(2000, 8000); shockwave(colonies[0], 1.0); });
   bind("mutate", () => mutateRandom());
 
   bind("focus", () => {
@@ -627,14 +617,12 @@
       a.href = url;
       a.download = "worm_colony.png";
       a.click();
-    } catch {
-      // no log
-    }
+    } catch {}
   });
 
   bind("reset", () => location.reload());
 
-  // ---------- Stats update ----------
+  // ------------------- Stats update -------------------
   function updateStats() {
     if (elBuyers) elBuyers.textContent = String(buyers);
     if (elVolume) elVolume.textContent = fmt(volume);
@@ -646,7 +634,7 @@
     }
   }
 
-  // ---------- Rendering helpers ----------
+  // ------------------- Rendering helpers -------------------
   function aura(x, y, r, hue, a) {
     const g = ctx.createRadialGradient(x, y, 0, x, y, r);
     g.addColorStop(0, `hsla(${hue},95%,65%,${a})`);
@@ -714,17 +702,6 @@
     for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
     ctx.stroke();
 
-    if (!isInteracting) {
-      for (let i = 0; i < pts.length; i += 4) {
-        const p = pts[i];
-        const r = Math.max(2.2, w.width * 0.35);
-        ctx.fillStyle = `hsla(${(w.hue + 20) % 360}, 95%, 65%, .82)`;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, r, 0, TAU);
-        ctx.fill();
-      }
-    }
-
     if (w.limbs?.length) {
       ctx.globalCompositeOperation = isInteracting ? "source-over" : "lighter";
       for (const L of w.limbs) {
@@ -754,10 +731,11 @@
     }
   }
 
-  // ---------- Worm behavior (spread around colony) ----------
+  // ------------------- Worm behavior (SPREAD AROUND COLONY) -------------------
   function wormBehavior(col, w, time) {
     const head = w.segs[0];
 
+    // anchor point around colony (prevents “all to the right”)
     w.anchorAng = normAng(w.anchorAng + w.anchorDrift * 0.0022);
     const wob = Math.sin(time * 0.0015 + w.phase) * 16;
 
@@ -787,6 +765,7 @@
     head.x += Math.cos(head.a) * step;
     head.y += Math.sin(head.a) * step;
 
+    // keep worms near colony
     const d = Math.hypot(head.x - col.x, head.y - col.y);
     const maxR = 300;
     const minR = 55;
@@ -802,6 +781,7 @@
       head.y += Math.sin(head.a) * 1.0;
     }
 
+    // follow segments
     for (let i = 1; i < w.segs.length; i++) {
       const prev = w.segs[i - 1];
       const seg = w.segs[i];
@@ -819,6 +799,7 @@
     }
   }
 
+  // ------------------- Simulation step -------------------
   function step(dt, time) {
     ensureBoss();
     trySplitByMcap();
@@ -856,11 +837,13 @@
     updateStats();
   }
 
+  // ------------------- Render (FIXED) -------------------
   function render(time) {
-    // 1) Background first (stars/galaxies/nebulas)
+    // background first (always clears full buffer)
     drawBackground(time, camX, camY);
 
-    // 2) World
+    // world in CSS pixels
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     ctx.save();
     ctx.translate(W / 2, H / 2);
     ctx.scale(zoom, zoom);
@@ -901,7 +884,7 @@
     dbg.textContent = "JS LOADED ✓ (rendering)";
   }
 
-  // ---------- Main loop ----------
+  // ------------------- Main loop -------------------
   let last = performance.now();
   let renderAccum = 0;
   const RENDER_FPS = 40;
@@ -921,10 +904,10 @@
     requestAnimationFrame(tick);
   }
 
-  // ---------- Boot ----------
+  // ------------------- Boot -------------------
   function boot() {
     resizeCanvas();
-    styleEventLogIfPresent();
+    forceStyleEventLog();
     zoomOutToFitAll();
     updateStats();
     logEvent("Simulation ready", "EVENT");
