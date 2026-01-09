@@ -13,9 +13,13 @@
   <div class="app">
     <header class="topbar">
       <div class="brand">
-        <img class="brandLogo" id="brandLogo"
+        <img
+          class="brandLogo"
+          id="brandLogo"
           src="https://i.postimg.cc/hGj8JD0V/1614F03F-52AD-453C-8DB1-09A3B29F3469.png"
-          alt="Worm Colony Logo" />
+          alt="Worm Colony Logo"
+          loading="eager"
+        />
         <div class="brandText">
           <div class="title">Worm Colony</div>
           <div class="sub">$WORM • LIVE COLONY</div>
@@ -29,12 +33,10 @@
     </header>
 
     <main class="stack">
-      <!-- SIM CARD -->
+      <!-- SIM -->
       <section class="card simCard">
         <div class="simWrap">
           <canvas id="simCanvas"></canvas>
-
-          <!-- Overlay: debug toast -->
           <div class="toast" id="toast">Loading…</div>
         </div>
 
@@ -43,7 +45,7 @@
         </div>
       </section>
 
-      <!-- STATS -->
+      <!-- STATS + EVENT LOG (log is BELOW stats) -->
       <section class="card statsCard">
         <div class="statsGrid">
           <div class="stat">
@@ -66,6 +68,11 @@
             <div class="label">Worms</div>
             <div class="value" id="worms">0</div>
           </div>
+        </div>
+
+        <div class="eventLogWrap">
+          <div class="eventLogTitle">Sim Events</div>
+          <div class="eventLog" id="eventLog"></div>
         </div>
       </section>
 
