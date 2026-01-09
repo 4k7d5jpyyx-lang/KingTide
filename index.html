@@ -9,91 +9,114 @@
 
 <body>
   <div class="app">
-    <!-- Header -->
+
+    <!-- Top Bar -->
     <header class="topbar">
       <div class="brand">
-        <div class="brandTitle">Worm Colony</div>
-        <div class="brandSub">$WORM · LIVE COLONY</div>
+        <img class="brand__icon" src="./logo.png" alt="Worm Colony logo" />
+        <div class="brand__text">
+          <div class="brand__title">Worm Colony</div>
+          <div class="brand__sub">$WORM • LIVE COLONY</div>
+        </div>
       </div>
 
-      <div class="statusPill">
+      <div class="status">
         <span class="dot"></span>
-        <span>Simulation Active</span>
+        <span id="simStatus">Simulation Active</span>
       </div>
     </header>
 
-    <!-- Simulation Card -->
-    <section class="card simCard">
-      <div class="simWrap">
-        <canvas id="simCanvas"></canvas>
-      </div>
-      <div class="hint">Tap colonies • Drag pan • Pinch zoom • Double tap center</div>
-    </section>
+    <!-- Simulation first (ALWAYS at top) -->
+    <section class="simcard">
+      <div class="simwrap">
+        <canvas id="simCanvas" aria-label="Worm Colony Simulation"></canvas>
 
-    <!-- Colony Inspector -->
-    <section class="card inspector">
-      <div class="insHead">
-        <div class="insLeft">
-          <div class="insLabel">Selected</div>
-          <div id="selName" class="insValue">Colony #1</div>
+        <!-- Small overlay help text inside the sim card (not over the canvas drawing) -->
+        <div class="simhint">
+          Tap colonies • Drag pan • Pinch zoom • Double tap center
         </div>
-        <div class="insRight">
-          <div class="insLabel">Traits</div>
-          <div class="insGrid">
-            <div class="traitRow"><span class="traitKey">DNA</span><span id="selDNA" class="traitVal">—</span></div>
-            <div class="traitRow"><span class="traitKey">Biome</span><span id="selBiome" class="traitVal">—</span></div>
-            <div class="traitRow"><span class="traitKey">Style</span><span id="selStyle" class="traitVal">—</span></div>
-          </div>
-        </div>
+
+        <!-- Debug / errors -->
+        <div id="dbg" class="dbg">Loading…</div>
       </div>
     </section>
 
-    <!-- Stats -->
-    <section class="card stats">
-      <div class="statGrid">
-        <div class="statBox">
-          <div class="statKey">Buyers</div>
-          <div id="buyers" class="statVal">0</div>
+    <!-- UI below sim -->
+    <section class="panel">
+
+      <div class="grid2">
+        <div class="stat">
+          <div class="stat__label">Buyers</div>
+          <div class="stat__value" id="buyers">0</div>
         </div>
-        <div class="statBox">
-          <div class="statKey">Volume</div>
-          <div id="volume" class="statVal">$0</div>
+        <div class="stat">
+          <div class="stat__label">Volume</div>
+          <div class="stat__value" id="volume">$0</div>
         </div>
-        <div class="statBox">
-          <div class="statKey">M Cap</div>
-          <div id="mcap" class="statVal">$0</div>
+        <div class="stat">
+          <div class="stat__label">M Cap</div>
+          <div class="stat__value" id="mcap">$0</div>
         </div>
-        <div class="statBox">
-          <div class="statKey">Colonies</div>
-          <div id="colonies" class="statVal">1</div>
+        <div class="stat">
+          <div class="stat__label">Colonies</div>
+          <div class="stat__value" id="colonies">1</div>
         </div>
-        <div class="statBox">
-          <div class="statKey">Worms</div>
-          <div id="worms" class="statVal">0</div>
+        <div class="stat">
+          <div class="stat__label">Worms</div>
+          <div class="stat__value" id="worms">3</div>
+        </div>
+        <div class="stat stat--wide">
+          <div class="stat__label">Selected</div>
+          <div class="stat__value" id="selectedName">Colony #1</div>
         </div>
       </div>
-    </section>
 
-    <!-- Controls -->
-    <section class="card controls">
+      <div class="inspect">
+        <div class="inspect__title">Colony Traits</div>
+        <div class="inspect__row">
+          <div class="k">DNA</div>
+          <div class="v" id="dna">—</div>
+        </div>
+        <div class="inspect__row">
+          <div class="k">Biome</div>
+          <div class="v" id="biome">—</div>
+        </div>
+        <div class="inspect__row">
+          <div class="k">Style</div>
+          <div class="v" id="style">—</div>
+        </div>
+        <div class="inspect__row">
+          <div class="k">Temperament</div>
+          <div class="v" id="temperament">—</div>
+        </div>
+      </div>
+
       <div class="btnGrid">
-        <button class="btn" data-action="feed">Feed</button>
-        <button class="btn" data-action="smallBuy">Small Buy</button>
-        <button class="btn" data-action="whaleBuy">Whale Buy</button>
-        <button class="btn" data-action="sell">Sell-off</button>
-        <button class="btn" data-action="storm">Volume Storm</button>
-        <button class="btn" data-action="mutate">Mutate</button>
-        <button class="btn" data-action="focus">Focus: Off</button>
-        <button class="btn" data-action="zoomIn">Zoom +</button>
-        <button class="btn" data-action="zoomOut">Zoom −</button>
-        <button class="btn" data-action="capture">Capture</button>
-        <button class="btn danger" data-action="reset">Reset</button>
+        <button class="btn btn--neon" data-action="feed">Feed</button>
+        <button class="btn btn--neon btn--blue" data-action="smallBuy">Small Buy</button>
+        <button class="btn btn--neon btn--purple" data-action="whaleBuy">Whale Buy</button>
+        <button class="btn btn--neon btn--red" data-action="sell">Sell-off</button>
+
+        <button class="btn btn--neon btn--amber" data-action="storm">Volume Storm</button>
+        <button class="btn btn--neon" data-action="mutate">Mutate</button>
+        <button class="btn btn--neon" data-action="focus" id="focusBtn">Focus: Off</button>
+        <button class="btn btn--neon" data-action="zoomIn">Zoom +</button>
+
+        <button class="btn btn--neon" data-action="zoomOut">Zoom −</button>
+        <button class="btn btn--neon btn--blue" data-action="capture">Capture</button>
+        <button class="btn btn--neon btn--red btn--wide" data-action="reset">Reset</button>
       </div>
 
-      <div id="log" class="log"></div>
+      <div class="log">
+        <div class="log__title">Mutation Log</div>
+        <div id="log" class="log__body"></div>
+      </div>
+
     </section>
+
   </div>
 
+  <!-- IMPORTANT: load JS at end so elements exist -->
   <script src="./script.js"></script>
 </body>
 </html>
