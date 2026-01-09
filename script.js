@@ -35,6 +35,16 @@
     const dx = ax - bx, dy = ay - by;
     return dx * dx + dy * dy;
   };
+  const TAU = Math.PI * 2;
+
+  // deterministic hash (for procedural stars)
+  function hash2i(x, y) {
+    let n = (x * 374761393 + y * 668265263) | 0;
+    n = (n ^ (n >>> 13)) | 0;
+    n = (n * 1274126177) | 0;
+    return (n ^ (n >>> 16)) >>> 0;
+  }
+  function h01(u32) { return (u32 & 0xfffffff) / 0xfffffff; }
 
   // ---------- DOM ----------
   const canvas = $("simCanvas") || $("c");
@@ -50,7 +60,6 @@
   const elWorms = $("worms");
 
   // ---------- Event Log (SIM EVENTS ONLY) ----------
-  // Uses #eventLog if you have it; otherwise uses #log; otherwise creates its own overlay.
   const EVENT_LOG_CAP = 28;
   let eventLogEl = $("eventLog") || $("log") || null;
 
@@ -75,16 +84,13 @@
       pointer-events:none;
     `;
     document.body.appendChild(eventLogEl);
-  } else {
-    // If #log existed, keep it, but we’ll only put sim events into it.
   }
 
   let lastEvent = { msg: "", t: 0, count: 0 };
   function logSim(msg, kind = "EVENT") {
     if (!eventLogEl) return;
-
     const now = Date.now();
-    // merge repeats
+
     if (msg === lastEvent.msg && now - lastEvent.t < 1400) {
       lastEvent.count++;
       const first = eventLogEl.firstChild;
@@ -109,23 +115,24 @@
     }
   }
 
-  // ---------- Sound FX (SIM EVENTS ONLY) ----------
-  // iOS requires user gesture to start audio. We'll unlock on first pointer/tap/click.
+  // ---------- Sound FX (iOS-safe unlock + queue) ----------
   let audioCtx = null;
   let master = null;
   let audioUnlocked = false;
+  const pendingSfx = [];
 
   function ensureAudio() {
-    if (audioUnlocked) return true;
     try {
+      if (audioUnlocked) return true;
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return false;
+
       audioCtx = audioCtx || new AC();
       master = master || audioCtx.createGain();
-      master.gain.value = 0.10; // overall volume (safe)
+      master.gain.value = 0.14; // louder (iOS needs this)
       master.connect(audioCtx.destination);
 
-      // unlock "silent beep"
+      // silent tiny start to unlock
       const o = audioCtx.createOscillator();
       const g = audioCtx.createGain();
       g.gain.value = 0.0001;
@@ -136,10 +143,20 @@
       o.stop(audioCtx.currentTime + 0.01);
 
       audioUnlocked = true;
+
+      // flush queued SFX
+      while (pendingSfx.length) {
+        try { pendingSfx.shift()(); } catch {}
+      }
       return true;
     } catch {
       return false;
     }
+  }
+
+  function playOrQueue(fn) {
+    if (audioUnlocked && audioCtx && master) fn();
+    else pendingSfx.push(fn);
   }
 
   function tone({ type = "sine", f0 = 440, f1 = 440, dur = 0.12, gain = 0.12 }) {
@@ -148,10 +165,10 @@
 
     const o = audioCtx.createOscillator();
     const g = audioCtx.createGain();
-
     o.type = type;
+
     o.frequency.setValueAtTime(f0, t0);
-    o.frequency.linearRampToValueAtTime(f1, t0 + dur);
+    o.frequency.exponentialRampToValueAtTime(Math.max(30, f1), t0 + dur);
 
     g.gain.setValueAtTime(0.0001, t0);
     g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), t0 + 0.01);
@@ -194,29 +211,39 @@
   }
 
   const SFX = {
+    enabled() {
+      tone({ type: "triangle", f0: 520, f1: 820, dur: 0.16, gain: 0.12 });
+      tone({ type: "triangle", f0: 820, f1: 1120, dur: 0.10, gain: 0.09 });
+    },
     ready() {
-      tone({ type: "triangle", f0: 520, f1: 720, dur: 0.16, gain: 0.10 });
-      tone({ type: "triangle", f0: 720, f1: 920, dur: 0.12, gain: 0.07 });
+      tone({ type: "triangle", f0: 420, f1: 720, dur: 0.16, gain: 0.11 });
     },
     mutation() {
-      tone({ type: "sine", f0: 860, f1: 1240, dur: 0.10, gain: 0.08 });
-      noiseBurst({ dur: 0.06, gain: 0.03, hp: 1400 });
+      tone({ type: "sine", f0: 860, f1: 1240, dur: 0.10, gain: 0.10 });
+      noiseBurst({ dur: 0.06, gain: 0.04, hp: 1400 });
     },
     hatch() {
-      tone({ type: "square", f0: 480, f1: 680, dur: 0.09, gain: 0.06 });
+      tone({ type: "square", f0: 420, f1: 680, dur: 0.09, gain: 0.08 });
     },
     newColony() {
-      tone({ type: "triangle", f0: 420, f1: 620, dur: 0.18, gain: 0.09 });
-      tone({ type: "triangle", f0: 620, f1: 820, dur: 0.14, gain: 0.07 });
+      tone({ type: "triangle", f0: 360, f1: 620, dur: 0.18, gain: 0.11 });
+      tone({ type: "triangle", f0: 620, f1: 980, dur: 0.14, gain: 0.09 });
     },
     boss() {
-      tone({ type: "sine", f0: 110, f1: 70, dur: 0.22, gain: 0.12 });
-      noiseBurst({ dur: 0.12, gain: 0.05, hp: 600 });
+      tone({ type: "sine", f0: 130, f1: 70, dur: 0.22, gain: 0.14 });
+      noiseBurst({ dur: 0.12, gain: 0.06, hp: 650 });
     }
   };
 
   function unlockAudioOnce() {
-    ensureAudio();
+    const ok = ensureAudio();
+    if (ok) {
+      playOrQueue(() => SFX.enabled());
+      dbg.textContent = "JS LOADED ✓ (audio enabled)";
+      logSim("Audio enabled", "INFO");
+    } else {
+      dbg.textContent = "JS LOADED ✓ (tap for audio)";
+    }
     window.removeEventListener("pointerdown", unlockAudioOnce);
     window.removeEventListener("touchstart", unlockAudioOnce);
     window.removeEventListener("click", unlockAudioOnce);
@@ -229,9 +256,9 @@
   let W = 1, H = 1, DPR = 1;
   function resizeCanvas() {
     const rect = canvas.getBoundingClientRect();
-    DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1)); // cap for performance
-    W = Math.max(1, rect.width);
-    H = Math.max(1, rect.height);
+    DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    W = Math.max(1, rect.width || 1);
+    H = Math.max(1, rect.height || 1);
     canvas.width = Math.floor(W * DPR);
     canvas.height = Math.floor(H * DPR);
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -303,7 +330,6 @@
     if (idx !== -1) {
       selected = idx;
       if (focusOn) centerOnSelected(true);
-      // (no log here — you asked for sim events only)
     }
   }, { passive: true });
 
@@ -346,7 +372,7 @@
       hue,
       chaos: rand(0.55, 1.35),
       drift: rand(0.55, 1.35),
-      aura: rand(0.9, 1.6),
+      aura: rand(0.95, 1.85),
       limbiness: rand(0.25, 1.1),
       temperament: ["CALM", "AGGRESSIVE", "CHAOTIC", "TOXIC"][randi(0, 3)],
       biome: ["NEON GARDEN", "DEEP SEA", "VOID BLOOM", "GLASS CAVE", "ARC STORM"][randi(0, 4)],
@@ -356,8 +382,8 @@
     const nodes = Array.from({ length: randi(4, 7) }, () => ({
       ox: rand(-70, 70),
       oy: rand(-70, 70),
-      r: rand(50, 110),
-      ph: rand(0, Math.PI * 2),
+      r: rand(60, 135),
+      ph: rand(0, TAU),
       sp: rand(0.4, 1.2)
     }));
 
@@ -387,7 +413,11 @@
       width: big ? rand(7, 11) : rand(4.2, 7),
       speed: big ? rand(0.38, 0.75) : rand(0.5, 1.05),
       turn: rand(0.008, 0.02) * col.dna.chaos,
-      phase: rand(0, Math.PI * 2),
+      phase: rand(0, TAU),
+      orbitDir: Math.random() < 0.5 ? -1 : 1, // IMPORTANT: breaks "all right"
+      homePhi: rand(0, TAU),                 // orbit target phase
+      homeR: rand(65, 125),                  // orbit target radius
+      jitterBias: rand(0.6, 1.4),
       limbs: [],
       segs: [],
       isBoss: false
@@ -395,7 +425,7 @@
 
     let px = col.x + rand(-55, 55);
     let py = col.y + rand(-55, 55);
-    let ang = rand(0, Math.PI * 2);
+    let ang = rand(0, TAU);
 
     for (let i = 0; i < segCount; i++) {
       w.segs.push({ x: px, y: py, a: ang, len: baseLen * rand(0.85, 1.22) });
@@ -403,7 +433,6 @@
       py -= Math.sin(ang) * baseLen;
       ang += rand(-0.3, 0.3) * col.dna.chaos;
     }
-
     return w;
   }
 
@@ -415,7 +444,7 @@
   // ---------- Fit view ----------
   function zoomOutToFitAll() {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    const pad = 420;
+    const pad = 520;
 
     for (const c of colonies) {
       minX = Math.min(minX, c.x - pad);
@@ -428,7 +457,7 @@
     const bh = Math.max(240, maxY - minY);
 
     const fit = Math.min(W / bw, H / bh);
-    zoom = clamp(fit * 0.92, 0.6, 1.6);
+    zoom = clamp(fit * 0.90, 0.6, 1.6);
 
     const cx = (minX + maxX) / 2;
     const cy = (minY + maxY) / 2;
@@ -465,16 +494,17 @@
       c.worms.push(boss);
       bossSpawned = true;
       shockwave(c, 1.4);
+
       logSim("Boss worm emerged", "EVENT");
-      SFX.boss();
+      playOrQueue(() => SFX.boss());
     }
   }
 
   function trySplitByMcap() {
     while (mcap >= nextSplitAt && colonies.length < MAX_COLONIES) {
       const base = colonies[0];
-      const ang = rand(0, Math.PI * 2);
-      const dist = rand(220, 360);
+      const ang = rand(0, TAU);
+      const dist = rand(260, 420);
       const nc = newColony(
         base.x + Math.cos(ang) * dist,
         base.y + Math.sin(ang) * dist,
@@ -489,8 +519,11 @@
       colonies.push(nc);
 
       logSim(`New colony spawned at ${fmt(nextSplitAt)} MC`, "EVENT");
-      SFX.newColony();
+      playOrQueue(() => SFX.newColony());
       nextSplitAt += MC_STEP;
+
+      // re-fit view slightly on new colony (keeps "space feel" with many colonies)
+      if (colonies.length <= 3) zoomOutToFitAll();
     }
   }
 
@@ -515,7 +548,7 @@
     }
 
     if (Math.random() < 0.22) shockwave(c, 0.9);
-    SFX.mutation();
+    playOrQueue(() => SFX.mutation());
   }
 
   // ---------- Worm population scaling ----------
@@ -538,11 +571,11 @@
       if (Math.random() < 0.35) shockwave(c, 0.6);
 
       logSim("New worm hatched", "EVENT");
-      SFX.hatch();
+      playOrQueue(() => SFX.hatch());
     }
   }
 
-  // ---------- Controls (NO LOG/SFX FOR BUY/SELL EVENTS) ----------
+  // ---------- Controls (keep mechanics; no event spam) ----------
   function bind(action, fn) {
     const btn = document.querySelector(`button[data-action="${action}"]`);
     if (btn) btn.addEventListener("click", fn);
@@ -577,7 +610,6 @@
     shockwave(colonies[0], 1.0);
   });
 
-  // mutate IS a sim event, so keep log/sfx
   bind("mutate", () => mutateRandom());
 
   bind("focus", () => {
@@ -621,30 +653,48 @@
     g.addColorStop(1, `hsla(${hue},95%,65%,0)`);
     ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.arc(x, y, r, 0, TAU);
     ctx.fill();
+  }
+
+  // Better, richer aura bloom for colonies (still performance-aware)
+  function colonyBloom(c, time) {
+    const h = c.dna.hue;
+    const pul = 1 + Math.sin(time * 0.0012 + c.dna.chaos) * 0.06;
+
+    // outer haze
+    ctx.globalCompositeOperation = "lighter";
+    aura(c.x, c.y, 220 * c.dna.aura * pul, (h + 10) % 360, isInteracting ? 0.07 : 0.12);
+    aura(c.x, c.y, 160 * c.dna.aura * pul, (h + 55) % 360, isInteracting ? 0.05 : 0.09);
+
+    // core glow
+    ctx.globalCompositeOperation = "source-over";
+    aura(c.x, c.y, 110 * c.dna.aura * pul, h, isInteracting ? 0.12 : 0.18);
+    aura(c.x, c.y, 80 * c.dna.aura * pul, (h + 35) % 360, isInteracting ? 0.08 : 0.12);
   }
 
   function irregularBlob(col, time) {
     const baseHue = col.dna.hue;
 
+    // metaball-ish nodes
     if (!isInteracting) {
       for (let i = 0; i < col.nodes.length; i++) {
         const n = col.nodes[i];
         const x = col.x + n.ox + Math.sin(time * 0.001 * n.sp + n.ph) * 10;
         const y = col.y + n.oy + Math.cos(time * 0.001 * n.sp + n.ph) * 10;
-        aura(x, y, n.r * 1.05, (baseHue + i * 18) % 360, 0.16);
-        aura(x, y, n.r * 0.7, (baseHue + i * 22 + 40) % 360, 0.10);
+        aura(x, y, n.r * 1.05, (baseHue + i * 18) % 360, 0.14);
+        aura(x, y, n.r * 0.7, (baseHue + i * 22 + 40) % 360, 0.09);
       }
     } else {
-      aura(col.x, col.y, 140 * col.dna.aura, baseHue, 0.12);
+      aura(col.x, col.y, 150 * col.dna.aura, baseHue, 0.10);
     }
 
-    const R = 130;
-    ctx.strokeStyle = `hsla(${baseHue}, 90%, 65%, .30)`;
+    // outline ring
+    const R = 140;
+    ctx.strokeStyle = `hsla(${baseHue}, 90%, 65%, .26)`;
     ctx.lineWidth = 1.6;
     ctx.beginPath();
-    for (let a = 0; a <= Math.PI * 2 + 0.001; a += Math.PI / 20) {
+    for (let a = 0; a <= TAU + 0.001; a += Math.PI / 22) {
       const wob =
         Math.sin(a * 3 + time * 0.0015) * 10 +
         Math.sin(a * 7 - time * 0.0011) * 6;
@@ -660,10 +710,11 @@
   function drawWorm(w, time) {
     const pts = w.segs;
 
+    // outer glow
     if (!isInteracting) {
       ctx.globalCompositeOperation = "lighter";
-      ctx.strokeStyle = `hsla(${w.hue}, 92%, 62%, ${w.isBoss ? 0.26 : 0.14})`;
-      ctx.lineWidth = w.width + (w.isBoss ? 8 : 6);
+      ctx.strokeStyle = `hsla(${w.hue}, 92%, 62%, ${w.isBoss ? 0.22 : 0.12})`;
+      ctx.lineWidth = w.width + (w.isBoss ? 9 : 6);
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       ctx.beginPath();
@@ -672,6 +723,7 @@
       ctx.stroke();
     }
 
+    // core
     ctx.globalCompositeOperation = "source-over";
     ctx.strokeStyle = `hsla(${w.hue}, 95%, 65%, ${w.isBoss ? 0.98 : 0.9})`;
     ctx.lineWidth = w.width;
@@ -682,17 +734,19 @@
     for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
     ctx.stroke();
 
+    // beads
     if (!isInteracting) {
       for (let i = 0; i < pts.length; i += 4) {
         const p = pts[i];
         const r = Math.max(2.2, w.width * 0.35);
-        ctx.fillStyle = `hsla(${(w.hue + 20) % 360}, 95%, 65%, .82)`;
+        ctx.fillStyle = `hsla(${(w.hue + 20) % 360}, 95%, 70%, .78)`;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, r, 0, TAU);
         ctx.fill();
       }
     }
 
+    // limbs
     if (w.limbs?.length) {
       ctx.globalCompositeOperation = isInteracting ? "source-over" : "lighter";
       for (const L of w.limbs) {
@@ -706,7 +760,7 @@
         const lx = base.x + Math.cos(baseAng) * L.len;
         const ly = base.y + Math.sin(baseAng) * L.len;
 
-        ctx.strokeStyle = `hsla(${(w.hue + 40) % 360}, 95%, 66%, ${isInteracting ? 0.35 : 0.55})`;
+        ctx.strokeStyle = `hsla(${(w.hue + 40) % 360}, 95%, 66%, ${isInteracting ? 0.30 : 0.50})`;
         ctx.lineWidth = Math.max(2, w.width * 0.35);
         ctx.beginPath();
         ctx.moveTo(base.x, base.y);
@@ -722,37 +776,189 @@
     }
   }
 
-  // ---------- Simulation step ----------
+  // ---------- SPACE BACKGROUND (stars + nebulas + galaxies) ----------
+  // pre-seeded nebula "clouds" (world space)
+  const nebulas = Array.from({ length: 6 }, (_, i) => {
+    const a = (i / 6) * TAU;
+    const r = 900 + i * 320;
+    return {
+      x: Math.cos(a) * r + rand(-180, 180),
+      y: Math.sin(a) * r + rand(-180, 180),
+      r: 520 + rand(-120, 220),
+      hue: (120 + i * 42 + rand(-25, 25)) % 360,
+      a: 0.12 + rand(0.02, 0.06)
+    };
+  });
+
+  const galaxies = Array.from({ length: 3 }, (_, i) => {
+    const a = rand(0, TAU);
+    const r = 1400 + i * 680;
+    return {
+      x: Math.cos(a) * r + rand(-260, 260),
+      y: Math.sin(a) * r + rand(-260, 260),
+      r: 780 + rand(-120, 180),
+      hue: (200 + i * 55 + rand(-20, 20)) % 360,
+      a: 0.10 + rand(0.02, 0.05)
+    };
+  });
+
+  function drawSpaceBackground(time) {
+    // visible world bounds
+    const left = (-W / 2) / zoom - camX;
+    const right = (W / 2) / zoom - camX;
+    const top = (-H / 2) / zoom - camY;
+    const bottom = (H / 2) / zoom - camY;
+
+    // deep space base
+    ctx.save();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "rgba(0,0,0,1)";
+    ctx.fillRect(left, top, right - left, bottom - top);
+
+    // nebulas (few big gradients)
+    ctx.globalCompositeOperation = "lighter";
+    for (const n of nebulas) {
+      const pul = 1 + Math.sin(time * 0.0006 + n.x * 0.0003) * 0.06;
+      const rr = n.r * pul;
+
+      const g = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, rr);
+      g.addColorStop(0, `hsla(${n.hue},95%,60%,${isInteracting ? n.a * 0.45 : n.a})`);
+      g.addColorStop(0.55, `hsla(${(n.hue + 30) % 360},95%,55%,${isInteracting ? n.a * 0.22 : n.a * 0.45})`);
+      g.addColorStop(1, `hsla(${n.hue},95%,50%,0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, rr, 0, TAU);
+      ctx.fill();
+    }
+
+    // galaxies (a little brighter core)
+    for (const ga of galaxies) {
+      const pul = 1 + Math.sin(time * 0.0005 + ga.y * 0.0004) * 0.05;
+      const rr = ga.r * pul;
+      const g = ctx.createRadialGradient(ga.x, ga.y, 0, ga.x, ga.y, rr);
+      g.addColorStop(0, `hsla(${ga.hue},95%,65%,${isInteracting ? ga.a * 0.50 : ga.a})`);
+      g.addColorStop(0.25, `hsla(${(ga.hue + 25) % 360},95%,60%,${isInteracting ? ga.a * 0.28 : ga.a * 0.55})`);
+      g.addColorStop(1, `hsla(${ga.hue},95%,50%,0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(ga.x, ga.y, rr, 0, TAU);
+      ctx.fill();
+    }
+
+    // stars (procedural grid cells)
+    ctx.globalCompositeOperation = "source-over";
+    const cell = 220;         // larger cell = fewer loops
+    const x0 = Math.floor(left / cell) - 1;
+    const x1 = Math.floor(right / cell) + 1;
+    const y0 = Math.floor(top / cell) - 1;
+    const y1 = Math.floor(bottom / cell) + 1;
+
+    // star density: fewer while interacting (smooth panning)
+    const perCell = isInteracting ? 2 : 5;
+
+    for (let gy = y0; gy <= y1; gy++) {
+      for (let gx = x0; gx <= x1; gx++) {
+        let h = hash2i(gx, gy);
+
+        for (let i = 0; i < perCell; i++) {
+          // deterministic randoms
+          h = (h * 1664525 + 1013904223) >>> 0;
+          const rx = h01(h);
+          h = (h * 1664525 + 1013904223) >>> 0;
+          const ry = h01(h);
+          h = (h * 1664525 + 1013904223) >>> 0;
+          const rs = h01(h);
+          h = (h * 1664525 + 1013904223) >>> 0;
+          const rh = h01(h);
+
+          const sx = (gx + rx) * cell;
+          const sy = (gy + ry) * cell;
+
+          // tiny twinkle
+          const tw = 0.6 + 0.4 * Math.sin(time * 0.002 + (gx * 17 + gy * 31 + i * 13));
+          const r = 0.6 + rs * 1.6; // star radius
+          const a = (0.22 + rs * 0.55) * tw;
+
+          // some colored stars
+          const hue = rh < 0.08 ? 200 : rh < 0.12 ? 280 : rh < 0.16 ? 50 : 0;
+
+          if (hue === 0) {
+            ctx.fillStyle = `rgba(255,255,255,${a})`;
+          } else {
+            ctx.fillStyle = `hsla(${hue},95%,70%,${a})`;
+          }
+
+          ctx.beginPath();
+          ctx.arc(sx, sy, r, 0, TAU);
+          ctx.fill();
+
+          // occasional sparkle
+          if (!isInteracting && rs > 0.86) {
+            ctx.strokeStyle = `rgba(255,255,255,${a * 0.55})`;
+            ctx.lineWidth = 0.8;
+            ctx.beginPath();
+            ctx.moveTo(sx - 3.5, sy);
+            ctx.lineTo(sx + 3.5, sy);
+            ctx.moveTo(sx, sy - 3.5);
+            ctx.lineTo(sx, sy + 3.5);
+            ctx.stroke();
+          }
+        }
+      }
+    }
+
+    ctx.restore();
+  }
+
+  // ---------- Worm behavior (FIX: no more "all go right") ----------
   function wormBehavior(col, w, time) {
     const head = w.segs[0];
-    const jitter = Math.sin(time * 0.002 + w.phase) * 0.12;
-    head.a += (Math.random() - 0.5) * w.turn + jitter;
 
-    const dx = col.x - head.x;
-    const dy = col.y - head.y;
-    const toward = Math.atan2(dy, dx);
+    // wandering field + orbiting target around colony center
+    w.homePhi += 0.0012 * w.orbitDir * (0.7 + col.dna.chaos * 0.25);
+    const targetX = col.x + Math.cos(w.homePhi) * w.homeR;
+    const targetY = col.y + Math.sin(w.homePhi) * w.homeR;
 
+    // angle toward moving target
+    const toward = Math.atan2(targetY - head.y, targetX - head.x);
+
+    // subtle wander (breaks directional lock)
+    const wander = Math.sin(time * 0.0016 + w.phase) * 0.18 * w.jitterBias;
+    const noise = (Math.random() - 0.5) * w.turn * 1.15;
+
+    // steer based on type (but always around target)
     if (w.type === "DRIFTER") {
-      head.a = head.a * 0.93 + toward * 0.07;
+      head.a = head.a * 0.92 + toward * 0.08 + wander * 0.05 + noise;
     } else if (w.type === "ORBITER") {
-      const orbit = toward + (Math.sin(time * 0.001 + w.phase) > 0 ? 1 : -1) * 0.9;
-      head.a = head.a * 0.90 + orbit * 0.10;
+      const orbit = toward + w.orbitDir * 0.75;
+      head.a = head.a * 0.88 + orbit * 0.12 + wander * 0.06 + noise;
     } else {
-      const bite = toward + Math.sin(time * 0.003 + w.phase) * 0.35;
-      head.a = head.a * 0.86 + bite * 0.14;
+      const bite = toward + Math.sin(time * 0.0028 + w.phase) * 0.32;
+      head.a = head.a * 0.84 + bite * 0.16 + wander * 0.05 + noise;
     }
 
     const boost = w.isBoss ? 2.0 : 1.0;
     head.x += Math.cos(head.a) * w.speed * 2.2 * boost;
     head.y += Math.sin(head.a) * w.speed * 2.2 * boost;
 
-    const d = Math.hypot(head.x - col.x, head.y - col.y);
-    if (d > 260) {
-      head.a += Math.PI * 0.7 * (Math.random() > 0.5 ? 1 : -1);
-      head.x = col.x + (head.x - col.x) * 0.92;
-      head.y = col.y + (head.y - col.y) * 0.92;
+    // soft boundary around colony (keep them “attached” but not snapping)
+    const dx = head.x - col.x;
+    const dy = head.y - col.y;
+    const d = Math.hypot(dx, dy);
+
+    const limit = 300;
+    if (d > limit) {
+      // push back inward smoothly
+      const pull = (d - limit) / 120;
+      head.x -= (dx / (d || 1)) * pull * 8.0;
+      head.y -= (dy / (d || 1)) * pull * 8.0;
+
+      // turn slightly inward
+      const inward = Math.atan2(-dy, -dx);
+      head.a = head.a * 0.78 + inward * 0.22;
     }
 
+    // segments follow
     for (let i = 1; i < w.segs.length; i++) {
       const prev = w.segs[i - 1];
       const seg = w.segs[i];
@@ -761,19 +967,21 @@
       const vy = seg.y - prev.y;
       const ang = Math.atan2(vy, vx);
 
-      const targetX = prev.x + Math.cos(ang) * seg.len;
-      const targetY = prev.y + Math.sin(ang) * seg.len;
+      const targetSX = prev.x + Math.cos(ang) * seg.len;
+      const targetSY = prev.y + Math.sin(ang) * seg.len;
 
-      seg.x = seg.x * 0.2 + targetX * 0.8;
-      seg.y = seg.y * 0.2 + targetY * 0.8;
+      seg.x = seg.x * 0.22 + targetSX * 0.78;
+      seg.y = seg.y * 0.22 + targetSY * 0.78;
       seg.a = ang;
     }
   }
 
+  // ---------- Simulation step ----------
   function step(dt, time) {
     ensureBoss();
     trySplitByMcap();
 
+    // colony drift (unbiased random walk)
     for (const c of colonies) {
       c.vx += rand(-0.02, 0.02) * c.dna.drift;
       c.vy += rand(-0.02, 0.02) * c.dna.drift;
@@ -789,12 +997,14 @@
       c.shock = c.shock.filter((s) => s.a > 0.06);
     }
 
+    // worms
     for (const c of colonies) {
       for (const w of c.worms) wormBehavior(c, w, time);
     }
 
     if (focusOn) centerOnSelected(true);
 
+    // auto mutations
     mutTimer += dt;
     const g = growthScore();
     const mutRate = clamp(2.2 - g * 0.08, 0.4, 2.2);
@@ -811,25 +1021,28 @@
     ctx.clearRect(0, 0, W, H);
     ctx.save();
 
+    // camera
     ctx.translate(W / 2, H / 2);
     ctx.scale(zoom, zoom);
     ctx.translate(camX, camY);
 
+    // background in WORLD SPACE (smooth while panning/zooming)
+    drawSpaceBackground(time);
+
+    // colonies
     for (let i = 0; i < colonies.length; i++) {
       const c = colonies[i];
 
+      // richer colony aura
+      colonyBloom(c, time);
+
       irregularBlob(c, time);
 
-      if (!isInteracting) {
-        aura(c.x, c.y, 130 * c.dna.aura, c.dna.hue, 0.18);
-        aura(c.x, c.y, 90 * c.dna.aura, (c.dna.hue + 40) % 360, 0.10);
-      }
-
       if (i === selected) {
-        ctx.strokeStyle = `hsla(${c.dna.hue}, 95%, 65%, .55)`;
+        ctx.strokeStyle = `hsla(${c.dna.hue}, 95%, 65%, .50)`;
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(c.x, c.y, 95 * c.dna.aura, 0, Math.PI * 2);
+        ctx.arc(c.x, c.y, 105 * c.dna.aura, 0, TAU);
         ctx.stroke();
       }
 
@@ -837,11 +1050,12 @@
         ctx.strokeStyle = `hsla(${c.dna.hue}, 92%, 62%, ${s.a})`;
         ctx.lineWidth = s.w;
         ctx.beginPath();
-        ctx.arc(c.x, c.y, s.r, 0, Math.PI * 2);
+        ctx.arc(c.x, c.y, s.r, 0, TAU);
         ctx.stroke();
       }
     }
 
+    // worms
     for (const c of colonies) {
       for (const w of c.worms) drawWorm(w, time);
     }
@@ -876,9 +1090,8 @@
     resizeCanvas();
     zoomOutToFitAll();
     updateStats();
-    logSim("Simulation ready", "INFO");
-    ensureAudio(); // safe attempt (still needs gesture to actually play on iOS)
-    SFX.ready();   // will only be heard after unlock
+    logSim("Simulation ready (tap screen to enable sound)", "INFO");
+    playOrQueue(() => SFX.ready());
     requestAnimationFrame(tick);
   }
 
