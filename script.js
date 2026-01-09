@@ -10,6 +10,7 @@
     color:rgba(235,240,248,.92); font:600 12px/1.2 system-ui, -apple-system, Inter, sans-serif;
     backdrop-filter: blur(10px);
     max-width: 78vw;
+    pointer-events:none;
   `;
   dbg.textContent = "JS LOADED ✓";
   document.body.appendChild(dbg);
@@ -21,66 +22,6 @@
   }
   window.addEventListener("error", (ev) => showErr(ev.error || ev.message));
   window.addEventListener("unhandledrejection", (ev) => showErr(ev.reason));
-
-  // ---------- REMOVE LEGACY INSPECTOR UI (circled panel) ----------
-  function removeLegacyInspectorUI() {
-    const candidates = [
-      "#inspect",
-      "#inspector",
-      "#colonyInspect",
-      "#colonyInspector",
-      "#traitsPanel",
-      "#traits",
-      "#selectedPanel",
-      ".inspect",
-      ".inspector",
-      ".colony-inspect",
-      ".colony-inspector",
-      ".traits-panel",
-      '[data-ui="inspect"]',
-      '[data-ui="inspector"]',
-      '[data-panel="inspect"]'
-    ];
-
-    // 1) Remove obvious known ids/classes
-    for (const sel of candidates) {
-      const el = document.querySelector(sel);
-      if (el) el.remove();
-    }
-
-    // 2) Remove by content match (fallback)
-    const allPanels = Array.from(document.querySelectorAll("div, section, aside"));
-    for (const el of allPanels) {
-      const t = (el.textContent || "").trim();
-      // This matches the exact vibe of the circled box
-      const looksLikeLegacy =
-        t.includes("Selected") &&
-        (t.includes("Colony #") || t.includes("Colony#")) &&
-        t.includes("DNA") &&
-        (t.includes("Temperament") || t.includes("Biome") || t.includes("Style")) &&
-        t.includes("Mutations");
-
-      if (looksLikeLegacy) {
-        el.remove();
-      }
-    }
-
-    // 3) In case something re-injects it, keep it hidden too
-    const style = document.createElement("style");
-    style.textContent = `
-      #inspect, #inspector, #colonyInspect, #colonyInspector, #traitsPanel, #traits, #selectedPanel,
-      .inspect, .inspector, .colony-inspect, .colony-inspector, .traits-panel {
-        display:none !important;
-        visibility:hidden !important;
-        pointer-events:none !important;
-      }
-    `;
-    document.head.appendChild(style);
-  }
-
-  // Run ASAP and once after layout
-  removeLegacyInspectorUI();
-  window.addEventListener("load", () => setTimeout(removeLegacyInspectorUI, 50));
 
   // ---------- Helpers ----------
   const $ = (id) => document.getElementById(id);
@@ -107,36 +48,188 @@
   const elMcap = $("mcap");
   const elColonies = $("colonies");
   const elWorms = $("worms");
-  const logEl = $("log");
 
-  // ---------- Log (cap + spam merge) ----------
-  const LOG_CAP = 45;
-  let lastLog = { msg: "", t: 0, count: 0 };
-  function log(msg, kind = "INFO") {
-    if (!logEl) return;
+  // ---------- Event Log (SIM EVENTS ONLY) ----------
+  // Uses #eventLog if you have it; otherwise uses #log; otherwise creates its own overlay.
+  const EVENT_LOG_CAP = 28;
+  let eventLogEl = $("eventLog") || $("log") || null;
+
+  if (!eventLogEl) {
+    eventLogEl = document.createElement("div");
+    eventLogEl.id = "eventLog";
+    eventLogEl.style.cssText = `
+      position:fixed; left:10px; bottom:10px; z-index:999999;
+      width:min(420px, 92vw);
+      max-height:34vh;
+      overflow:hidden;
+      display:flex;
+      flex-direction:column-reverse;
+      gap:6px;
+      padding:10px;
+      border-radius:16px;
+      background:rgba(0,0,0,.35);
+      border:1px solid rgba(255,255,255,.14);
+      backdrop-filter: blur(10px);
+      color:rgba(235,240,248,.92);
+      font:600 12px/1.2 system-ui, -apple-system, Inter, sans-serif;
+      pointer-events:none;
+    `;
+    document.body.appendChild(eventLogEl);
+  } else {
+    // If #log existed, keep it, but we’ll only put sim events into it.
+  }
+
+  let lastEvent = { msg: "", t: 0, count: 0 };
+  function logSim(msg, kind = "EVENT") {
+    if (!eventLogEl) return;
+
     const now = Date.now();
-    if (msg === lastLog.msg && now - lastLog.t < 1300) {
-      lastLog.count++;
-      const top = logEl.firstChild;
-      if (top) top.textContent = `${kind}: ${msg} (x${lastLog.count})`;
-      lastLog.t = now;
+    // merge repeats
+    if (msg === lastEvent.msg && now - lastEvent.t < 1400) {
+      lastEvent.count++;
+      const first = eventLogEl.firstChild;
+      if (first) first.textContent = `${kind}: ${msg} (x${lastEvent.count})`;
+      lastEvent.t = now;
       return;
     }
-    lastLog = { msg, t: now, count: 1 };
+    lastEvent = { msg, t: now, count: 1 };
+
     const d = document.createElement("div");
+    d.style.cssText = `
+      padding:8px 10px;
+      border-radius:14px;
+      background:rgba(0,0,0,.30);
+      border:1px solid rgba(255,255,255,.10);
+    `;
     d.textContent = `${kind}: ${msg}`;
-    logEl.prepend(d);
-    while (logEl.children.length > LOG_CAP) logEl.removeChild(logEl.lastChild);
+    eventLogEl.prepend(d);
+
+    while (eventLogEl.children.length > EVENT_LOG_CAP) {
+      eventLogEl.removeChild(eventLogEl.lastChild);
+    }
   }
+
+  // ---------- Sound FX (SIM EVENTS ONLY) ----------
+  // iOS requires user gesture to start audio. We'll unlock on first pointer/tap/click.
+  let audioCtx = null;
+  let master = null;
+  let audioUnlocked = false;
+
+  function ensureAudio() {
+    if (audioUnlocked) return true;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return false;
+      audioCtx = audioCtx || new AC();
+      master = master || audioCtx.createGain();
+      master.gain.value = 0.10; // overall volume (safe)
+      master.connect(audioCtx.destination);
+
+      // unlock "silent beep"
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      g.gain.value = 0.0001;
+      o.frequency.value = 220;
+      o.connect(g);
+      g.connect(master);
+      o.start();
+      o.stop(audioCtx.currentTime + 0.01);
+
+      audioUnlocked = true;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function tone({ type = "sine", f0 = 440, f1 = 440, dur = 0.12, gain = 0.12 }) {
+    if (!audioUnlocked || !audioCtx || !master) return;
+    const t0 = audioCtx.currentTime;
+
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t0);
+    o.frequency.linearRampToValueAtTime(f1, t0 + dur);
+
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+
+    o.connect(g);
+    g.connect(master);
+
+    o.start(t0);
+    o.stop(t0 + dur + 0.02);
+  }
+
+  function noiseBurst({ dur = 0.10, gain = 0.06, hp = 900 }) {
+    if (!audioUnlocked || !audioCtx || !master) return;
+    const t0 = audioCtx.currentTime;
+
+    const bufferSize = Math.floor(audioCtx.sampleRate * dur);
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+
+    const src = audioCtx.createBufferSource();
+    src.buffer = buffer;
+
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = "highpass";
+    filter.frequency.value = hp;
+
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+
+    src.connect(filter);
+    filter.connect(g);
+    g.connect(master);
+
+    src.start(t0);
+    src.stop(t0 + dur + 0.02);
+  }
+
+  const SFX = {
+    ready() {
+      tone({ type: "triangle", f0: 520, f1: 720, dur: 0.16, gain: 0.10 });
+      tone({ type: "triangle", f0: 720, f1: 920, dur: 0.12, gain: 0.07 });
+    },
+    mutation() {
+      tone({ type: "sine", f0: 860, f1: 1240, dur: 0.10, gain: 0.08 });
+      noiseBurst({ dur: 0.06, gain: 0.03, hp: 1400 });
+    },
+    hatch() {
+      tone({ type: "square", f0: 480, f1: 680, dur: 0.09, gain: 0.06 });
+    },
+    newColony() {
+      tone({ type: "triangle", f0: 420, f1: 620, dur: 0.18, gain: 0.09 });
+      tone({ type: "triangle", f0: 620, f1: 820, dur: 0.14, gain: 0.07 });
+    },
+    boss() {
+      tone({ type: "sine", f0: 110, f1: 70, dur: 0.22, gain: 0.12 });
+      noiseBurst({ dur: 0.12, gain: 0.05, hp: 600 });
+    }
+  };
+
+  function unlockAudioOnce() {
+    ensureAudio();
+    window.removeEventListener("pointerdown", unlockAudioOnce);
+    window.removeEventListener("touchstart", unlockAudioOnce);
+    window.removeEventListener("click", unlockAudioOnce);
+  }
+  window.addEventListener("pointerdown", unlockAudioOnce, { passive: true });
+  window.addEventListener("touchstart", unlockAudioOnce, { passive: true });
+  window.addEventListener("click", unlockAudioOnce, { passive: true });
 
   // ---------- Canvas sizing (iOS safe + performance) ----------
   let W = 1, H = 1, DPR = 1;
   function resizeCanvas() {
     const rect = canvas.getBoundingClientRect();
-
-    // PERF FIX #1: cap DPR so retina iPhones don't create huge canvases
-    DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-
+    DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1)); // cap for performance
     W = Math.max(1, rect.width);
     H = Math.max(1, rect.height);
     canvas.width = Math.floor(W * DPR);
@@ -166,8 +259,6 @@
   let dragging = false, lastX = 0, lastY = 0;
   let selected = 0;
   let focusOn = false;
-
-  // PERF: render "lite" while interacting (dragging/pinching)
   let isInteracting = false;
 
   function toWorld(px, py) {
@@ -211,8 +302,8 @@
     const idx = pickColony(w.x, w.y);
     if (idx !== -1) {
       selected = idx;
-      log(`Selected Colony #${idx + 1}`, "INFO");
       if (focusOn) centerOnSelected(true);
+      // (no log here — you asked for sim events only)
     }
   }, { passive: true });
 
@@ -221,7 +312,6 @@
     isInteracting = false;
   }, { passive: true });
 
-  // wheel zoom (desktop)
   canvas.addEventListener("wheel", (e) => {
     e.preventDefault();
     isInteracting = true;
@@ -231,7 +321,6 @@
     canvas.__wheelTO = setTimeout(() => (isInteracting = false), 120);
   }, { passive: false });
 
-  // double tap center
   let lastTap = 0;
   canvas.addEventListener("touchend", () => {
     const now = Date.now();
@@ -323,7 +412,7 @@
   colonies[0].worms.push(newWorm(colonies[0], false));
   colonies[0].worms.push(newWorm(colonies[0], true));
 
-  // ---------- Fit view (zoomed out start) ----------
+  // ---------- Fit view ----------
   function zoomOutToFitAll() {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     const pad = 420;
@@ -376,7 +465,8 @@
       c.worms.push(boss);
       bossSpawned = true;
       shockwave(c, 1.4);
-      log("Boss worm emerged", "EVENT");
+      logSim("Boss worm emerged", "EVENT");
+      SFX.boss();
     }
   }
 
@@ -398,7 +488,8 @@
       shockwave(nc, 1.1);
       colonies.push(nc);
 
-      log(`New colony spawned at ${fmt(nextSplitAt)} MC`, "EVENT");
+      logSim(`New colony spawned at ${fmt(nextSplitAt)} MC`, "EVENT");
+      SFX.newColony();
       nextSplitAt += MC_STEP;
     }
   }
@@ -411,19 +502,20 @@
 
     if (r < 0.30) {
       w.hue = (w.hue + rand(30, 140)) % 360;
-      log(`Color shift • Worm ${w.id} (Colony #${colonies.indexOf(c) + 1})`, "MUTATION");
+      logSim(`Mutation: Color shift • Worm ${w.id}`, "MUTATION");
     } else if (r < 0.56) {
       w.speed *= rand(1.05, 1.25);
-      log(`Aggression spike • Worm ${w.id}`, "MUTATION");
+      logSim(`Mutation: Aggression spike • Worm ${w.id}`, "MUTATION");
     } else if (r < 0.78) {
       w.width = clamp(w.width * rand(1.05, 1.25), 3.5, 16);
-      log(`Body growth • Worm ${w.id}`, "MUTATION");
+      logSim(`Mutation: Body growth • Worm ${w.id}`, "MUTATION");
     } else {
       addLimb(w, c, Math.random() < 0.35);
-      log(`Limb growth • Worm ${w.id}`, "MUTATION");
+      logSim(`Mutation: Limb growth • Worm ${w.id}`, "MUTATION");
     }
 
     if (Math.random() < 0.22) shockwave(c, 0.9);
+    SFX.mutation();
   }
 
   // ---------- Worm population scaling ----------
@@ -444,11 +536,13 @@
       const c = colonies[selected] || colonies[0];
       c.worms.push(newWorm(c, Math.random() < 0.18));
       if (Math.random() < 0.35) shockwave(c, 0.6);
-      log("New worm hatched", "INFO");
+
+      logSim("New worm hatched", "EVENT");
+      SFX.hatch();
     }
   }
 
-  // ---------- Controls ----------
+  // ---------- Controls (NO LOG/SFX FOR BUY/SELL EVENTS) ----------
   function bind(action, fn) {
     const btn = document.querySelector(`button[data-action="${action}"]`);
     if (btn) btn.addEventListener("click", fn);
@@ -457,47 +551,33 @@
   bind("feed", () => {
     volume += rand(20, 90);
     mcap += rand(120, 460);
-    log("Feed + nutrients", "INFO");
   });
 
   bind("smallBuy", () => {
     buyers += 1;
-    const dv = rand(180, 900);
-    const dm = rand(900, 3200);
-    volume += dv;
-    mcap += dm;
-    log(`Buy • +1 buyers • +${fmt(dv)} vol • +${fmt(dm)} MC`, "INFO");
-    if (Math.random() < 0.3) shockwave(colonies[0], 0.55);
+    volume += rand(180, 900);
+    mcap += rand(900, 3200);
   });
 
   bind("whaleBuy", () => {
-    const b = randi(2, 5);
-    const dv = rand(2500, 8500);
-    const dm = rand(9000, 22000);
-    buyers += b;
-    volume += dv;
-    mcap += dm;
+    buyers += randi(2, 5);
+    volume += rand(2500, 8500);
+    mcap += rand(9000, 22000);
     shockwave(colonies[0], 1.2);
-    log(`Whale Buy • +${b} buyers • +${fmt(dv)} vol • +${fmt(dm)} MC`, "EVENT");
   });
 
   bind("sell", () => {
-    const dv = rand(600, 2600);
-    const dm = rand(2200, 9000);
-    volume = Math.max(0, volume - dv);
-    mcap = Math.max(0, mcap - dm);
-    log(`Sell-off • -${fmt(dv)} vol • -${fmt(dm)} MC`, "WARN");
+    volume = Math.max(0, volume - rand(600, 2600));
+    mcap = Math.max(0, mcap - rand(2200, 9000));
   });
 
   bind("storm", () => {
-    const dv = rand(5000, 18000);
-    const dm = rand(2000, 8000);
-    volume += dv;
-    mcap += dm;
+    volume += rand(5000, 18000);
+    mcap += rand(2000, 8000);
     shockwave(colonies[0], 1.0);
-    log(`Volume Storm • +${fmt(dv)} vol • +${fmt(dm)} MC`, "EVENT");
   });
 
+  // mutate IS a sim event, so keep log/sfx
   bind("mutate", () => mutateRandom());
 
   bind("focus", () => {
@@ -517,10 +597,7 @@
       a.href = url;
       a.download = "worm_colony.png";
       a.click();
-      log("Capture saved", "INFO");
-    } catch {
-      log("Capture blocked by iOS — try screenshot/share", "WARN");
-    }
+    } catch {}
   });
 
   bind("reset", () => location.reload());
@@ -773,9 +850,8 @@
     dbg.textContent = "JS LOADED ✓ (rendering)";
   }
 
-  // ---------- Main loop (performance throttles) ----------
+  // ---------- Main loop ----------
   let last = performance.now();
-
   let renderAccum = 0;
   const RENDER_FPS = 40;
   const RENDER_DT = 1 / RENDER_FPS;
@@ -800,7 +876,9 @@
     resizeCanvas();
     zoomOutToFitAll();
     updateStats();
-    log("Simulation ready", "INFO");
+    logSim("Simulation ready", "INFO");
+    ensureAudio(); // safe attempt (still needs gesture to actually play on iOS)
+    SFX.ready();   // will only be heard after unlock
     requestAnimationFrame(tick);
   }
 
