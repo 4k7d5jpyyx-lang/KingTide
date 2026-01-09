@@ -2,538 +2,98 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="KingTide — Catch the wave before it hits." />
-  <title>KingTide</title>
-
-  <style>
-    :root{
-      --bg:#070b14;
-      --panel:rgba(255,255,255,.06);
-      --stroke:rgba(255,255,255,.12);
-      --text:rgba(255,255,255,.92);
-      --muted:rgba(255,255,255,.72);
-      --muted2:rgba(255,255,255,.56);
-      --accent:#44d3ff;
-      --accent2:#6a5cff;
-      --ok:#44ff9a;
-      --warn:#ffd36a;
-      --shadow:0 18px 60px rgba(0,0,0,.45);
-      --radius:18px;
-      --radius2:26px;
-      --max:1120px;
-    }
-
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      margin:0;
-      color:var(--text);
-      font:16px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
-      background:
-        radial-gradient(900px 500px at 20% 10%, rgba(68,211,255,.16), transparent 60%),
-        radial-gradient(800px 480px at 80% 20%, rgba(106,92,255,.18), transparent 60%),
-        radial-gradient(900px 600px at 55% 85%, rgba(68,255,154,.10), transparent 55%),
-        linear-gradient(180deg, #060812 0%, #070b14 50%, #050714 100%);
-      overflow-x:hidden;
-    }
-
-    a{color:inherit; text-decoration:none}
-    .wrap{max-width:var(--max); margin:0 auto; padding:22px 18px 70px}
-    .nav{
-      display:flex; align-items:center; justify-content:space-between;
-      gap:14px; padding:12px 12px;
-      position:sticky; top:0; z-index:20;
-      background:linear-gradient(180deg, rgba(7,11,20,.78), rgba(7,11,20,.34));
-      backdrop-filter: blur(12px);
-      border-bottom:1px solid rgba(255,255,255,.06);
-    }
-    .brand{display:flex; align-items:center; gap:10px; font-weight:750; letter-spacing:.2px}
-    .logo{
-      width:34px; height:34px; border-radius:10px;
-      background:
-        radial-gradient(10px 10px at 22px 10px, rgba(255,255,255,.92), transparent 50%),
-        conic-gradient(from 200deg, rgba(68,211,255,1), rgba(106,92,255,1), rgba(68,211,255,1));
-      box-shadow: 0 10px 28px rgba(68,211,255,.16);
-      position:relative;
-      overflow:hidden;
-    }
-    .logo:after{
-      content:"";
-      position:absolute; inset:-18px -22px auto auto;
-      width:72px; height:72px;
-      border-radius:50%;
-      background:rgba(255,255,255,.12);
-      transform:rotate(12deg);
-      filter: blur(0px);
-    }
-    .navlinks{display:flex; gap:14px; align-items:center; flex-wrap:wrap}
-    .navlinks a{
-      padding:10px 12px; border-radius:12px;
-      color:var(--muted);
-      border:1px solid transparent;
-    }
-    .navlinks a:hover{
-      color:var(--text);
-      border-color:rgba(255,255,255,.10);
-      background:rgba(255,255,255,.04);
-    }
-
-    .ctaRow{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
-    .btn{
-      display:inline-flex; align-items:center; justify-content:center;
-      gap:10px;
-      padding:12px 14px;
-      border-radius:14px;
-      border:1px solid rgba(255,255,255,.12);
-      background:rgba(255,255,255,.06);
-      color:var(--text);
-      box-shadow: 0 10px 34px rgba(0,0,0,.18);
-      transition: transform .15s ease, border-color .15s ease, background .15s ease;
-      cursor:pointer;
-      user-select:none;
-      white-space:nowrap;
-    }
-    .btn:hover{transform: translateY(-1px); border-color:rgba(255,255,255,.22); background:rgba(255,255,255,.08)}
-    .btn.primary{
-      border-color: rgba(68,211,255,.35);
-      background: linear-gradient(135deg, rgba(68,211,255,.18), rgba(106,92,255,.18));
-      box-shadow: 0 18px 60px rgba(68,211,255,.10);
-    }
-    .btn.primary:hover{border-color: rgba(68,211,255,.55)}
-    .pill{
-      display:inline-flex; gap:8px; align-items:center;
-      padding:8px 10px;
-      border-radius:999px;
-      border:1px solid rgba(255,255,255,.12);
-      background:rgba(255,255,255,.05);
-      color:var(--muted);
-      font-size:13px;
-      white-space:nowrap;
-    }
-    .dot{
-      width:8px; height:8px; border-radius:50%;
-      background:linear-gradient(180deg, var(--accent), var(--accent2));
-      box-shadow:0 0 0 3px rgba(68,211,255,.12);
-    }
-
-    /* HERO */
-    .hero{
-      padding:54px 0 26px;
-      display:grid;
-      grid-template-columns: 1.1fr .9fr;
-      gap:22px;
-      align-items:stretch;
-    }
-    @media (max-width: 940px){
-      .hero{grid-template-columns:1fr; padding-top:34px}
-      .nav{position:relative}
-    }
-
-    .hcard{
-      border:1px solid rgba(255,255,255,.10);
-      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
-      border-radius: var(--radius2);
-      box-shadow: var(--shadow);
-      padding:24px;
-      position:relative;
-      overflow:hidden;
-    }
-    .hcard:before{
-      content:"";
-      position:absolute;
-      inset:-160px -120px auto auto;
-      width:360px; height:360px;
-      background: radial-gradient(circle at 30% 30%, rgba(68,211,255,.18), transparent 55%),
-                  radial-gradient(circle at 70% 60%, rgba(106,92,255,.16), transparent 55%);
-      transform: rotate(18deg);
-      filter: blur(2px);
-    }
-    .hTop{display:flex; gap:10px; align-items:center; flex-wrap:wrap; position:relative}
-    h1{
-      margin:14px 0 10px;
-      font-size:56px;
-      line-height:1.05;
-      letter-spacing:-1.2px;
-      position:relative;
-    }
-    @media (max-width: 520px){ h1{font-size:42px} }
-    .sub{
-      margin:0 0 18px;
-      color:var(--muted);
-      font-size:18px;
-      max-width:55ch;
-      position:relative;
-    }
-    .heroBtns{display:flex; gap:10px; flex-wrap:wrap; position:relative}
-    .fine{
-      margin:14px 0 0;
-      color:var(--muted2);
-      font-size:13px;
-      position:relative;
-    }
-
-    .side{
-      display:grid; gap:14px;
-    }
-    .card{
-      border:1px solid rgba(255,255,255,.10);
-      background: rgba(255,255,255,.05);
-      border-radius: var(--radius);
-      padding:16px;
-      box-shadow: 0 14px 50px rgba(0,0,0,.24);
-    }
-    .card h3{margin:0 0 10px; font-size:14px; letter-spacing:.2px; color:var(--muted)}
-    .kv{display:grid; gap:10px}
-    .kvrow{
-      display:flex; align-items:center; justify-content:space-between;
-      gap:12px;
-      padding:10px 12px;
-      border-radius:14px;
-      border:1px solid rgba(255,255,255,.10);
-      background:rgba(0,0,0,.14);
-    }
-    .k{color:var(--muted); font-size:13px}
-    .v{font-weight:700}
-    .mono{
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      font-size:13px;
-      color:rgba(255,255,255,.86);
-      overflow:hidden;
-      text-overflow:ellipsis;
-      white-space:nowrap;
-      max-width:56vw;
-    }
-
-    .copy{
-      display:inline-flex; gap:8px; align-items:center;
-      padding:8px 10px;
-      border-radius:12px;
-      border:1px solid rgba(255,255,255,.12);
-      background:rgba(255,255,255,.06);
-      cursor:pointer;
-      font-size:13px;
-      color:var(--text);
-      transition: transform .12s ease, background .12s ease, border-color .12s ease;
-      user-select:none;
-      white-space:nowrap;
-    }
-    .copy:hover{transform: translateY(-1px); background:rgba(255,255,255,.08); border-color:rgba(255,255,255,.20)}
-    .hint{color:var(--muted2); font-size:12px; margin-top:8px}
-
-    /* sections */
-    section{margin-top:34px}
-    .grid3{
-      display:grid; grid-template-columns:repeat(3, 1fr); gap:14px;
-    }
-    @media (max-width: 900px){ .grid3{grid-template-columns:1fr} }
-
-    .feature{
-      padding:18px;
-      border:1px solid rgba(255,255,255,.10);
-      background: rgba(255,255,255,.05);
-      border-radius: var(--radius);
-      position:relative;
-      overflow:hidden;
-    }
-    .feature:before{
-      content:"";
-      position:absolute; inset:auto -60px -60px auto;
-      width:180px; height:180px;
-      background: radial-gradient(circle, rgba(68,211,255,.12), transparent 60%);
-      transform: rotate(18deg);
-    }
-    .feature h4{margin:0 0 8px; font-size:16px}
-    .feature p{margin:0; color:var(--muted); font-size:14px}
-
-    .road{
-      display:grid; grid-template-columns:repeat(3, 1fr); gap:14px;
-    }
-    @media (max-width: 900px){ .road{grid-template-columns:1fr} }
-    .step{
-      border:1px solid rgba(255,255,255,.10);
-      background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.03));
-      border-radius: var(--radius);
-      padding:18px;
-    }
-    .tag{
-      display:inline-flex; align-items:center; gap:8px;
-      padding:6px 10px;
-      border-radius:999px;
-      border:1px solid rgba(255,255,255,.10);
-      background:rgba(0,0,0,.18);
-      color:var(--muted);
-      font-size:12px;
-    }
-    .step h4{margin:10px 0 8px}
-    .step ul{margin:0; padding-left:18px; color:var(--muted)}
-    .step li{margin:6px 0}
-
-    footer{
-      margin-top:42px;
-      padding-top:22px;
-      border-top:1px solid rgba(255,255,255,.08);
-      color:var(--muted2);
-      font-size:12.5px;
-      display:flex;
-      justify-content:space-between;
-      flex-wrap:wrap;
-      gap:10px;
-    }
-    .links{display:flex; gap:10px; flex-wrap:wrap}
-    .links a{color:var(--muted); padding:6px 10px; border-radius:10px; border:1px solid transparent}
-    .links a:hover{color:var(--text); border-color:rgba(255,255,255,.10); background:rgba(255,255,255,.04)}
-
-    /* subtle wave divider */
-    .wave{
-      width:100%;
-      margin:26px 0 10px;
-      opacity:.9;
-      filter: drop-shadow(0 12px 30px rgba(0,0,0,.35));
-    }
-  </style>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Worm Colony</title>
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 
 <body>
-  <div class="nav">
-    <div class="brand">
-      <div class="logo" aria-hidden="true"></div>
-      <div>KingTide</div>
-      <div class="pill"><span class="dot"></span><span id="statusText">Live</span></div>
-    </div>
+  <div class="app">
+    <!-- Header -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="brandTitle">Worm Colony</div>
+        <div class="brandSub">$WORM · LIVE COLONY</div>
+      </div>
 
-    <div class="navlinks">
-      <a href="#about">About</a>
-      <a href="#token">Token</a>
-      <a href="#roadmap">Roadmap</a>
-      <a href="#community">Community</a>
-    </div>
+      <div class="statusPill">
+        <span class="dot"></span>
+        <span>Simulation Active</span>
+      </div>
+    </header>
 
-    <div class="ctaRow">
-      <a class="btn primary" id="buyBtn" href="#" target="_blank" rel="noopener">Buy</a>
-      <a class="btn" id="chartBtn" href="#" target="_blank" rel="noopener">Chart</a>
-    </div>
+    <!-- Simulation Card -->
+    <section class="card simCard">
+      <div class="simWrap">
+        <canvas id="simCanvas"></canvas>
+      </div>
+      <div class="hint">Tap colonies • Drag pan • Pinch zoom • Double tap center</div>
+    </section>
+
+    <!-- Colony Inspector -->
+    <section class="card inspector">
+      <div class="insHead">
+        <div class="insLeft">
+          <div class="insLabel">Selected</div>
+          <div id="selName" class="insValue">Colony #1</div>
+        </div>
+        <div class="insRight">
+          <div class="insLabel">Traits</div>
+          <div class="insGrid">
+            <div class="traitRow"><span class="traitKey">DNA</span><span id="selDNA" class="traitVal">—</span></div>
+            <div class="traitRow"><span class="traitKey">Biome</span><span id="selBiome" class="traitVal">—</span></div>
+            <div class="traitRow"><span class="traitKey">Style</span><span id="selStyle" class="traitVal">—</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Stats -->
+    <section class="card stats">
+      <div class="statGrid">
+        <div class="statBox">
+          <div class="statKey">Buyers</div>
+          <div id="buyers" class="statVal">0</div>
+        </div>
+        <div class="statBox">
+          <div class="statKey">Volume</div>
+          <div id="volume" class="statVal">$0</div>
+        </div>
+        <div class="statBox">
+          <div class="statKey">M Cap</div>
+          <div id="mcap" class="statVal">$0</div>
+        </div>
+        <div class="statBox">
+          <div class="statKey">Colonies</div>
+          <div id="colonies" class="statVal">1</div>
+        </div>
+        <div class="statBox">
+          <div class="statKey">Worms</div>
+          <div id="worms" class="statVal">0</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Controls -->
+    <section class="card controls">
+      <div class="btnGrid">
+        <button class="btn" data-action="feed">Feed</button>
+        <button class="btn" data-action="smallBuy">Small Buy</button>
+        <button class="btn" data-action="whaleBuy">Whale Buy</button>
+        <button class="btn" data-action="sell">Sell-off</button>
+        <button class="btn" data-action="storm">Volume Storm</button>
+        <button class="btn" data-action="mutate">Mutate</button>
+        <button class="btn" data-action="focus">Focus: Off</button>
+        <button class="btn" data-action="zoomIn">Zoom +</button>
+        <button class="btn" data-action="zoomOut">Zoom −</button>
+        <button class="btn" data-action="capture">Capture</button>
+        <button class="btn danger" data-action="reset">Reset</button>
+      </div>
+
+      <div id="log" class="log"></div>
+    </section>
   </div>
 
-  <div class="wrap">
-    <div class="hero">
-      <div class="hcard">
-        <div class="hTop">
-          <span class="pill"><span class="dot"></span>Catch the wave</span>
-          <span class="pill">Clean • Fast • Community</span>
-        </div>
-
-        <h1>KingTide</h1>
-        <p class="sub">
-          The tide always turns — KingTide arrives when it does.
-          <br />
-          Catch the wave early, or watch it roll past.
-        </p>
-
-        <div class="heroBtns">
-          <a class="btn primary" id="heroBuy" href="#" target="_blank" rel="noopener">Buy KingTide</a>
-          <a class="btn" id="heroJoin" href="#" target="_blank" rel="noopener">Join the Community</a>
-          <button class="btn" id="copyCA" type="button">Copy Contract</button>
-        </div>
-
-        <p class="fine">
-          Meme token for entertainment purposes only. Crypto is risky. Use what you can afford to lose.
-        </p>
-
-        <!-- inline wave divider -->
-        <svg class="wave" viewBox="0 0 1200 120" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <path fill="rgba(68,211,255,.16)" d="M0,50 C150,120 350,0 600,55 C850,110 1050,35 1200,60 L1200,120 L0,120 Z"></path>
-          <path fill="rgba(106,92,255,.14)" d="M0,75 C200,20 380,120 600,75 C820,30 980,120 1200,80 L1200,120 L0,120 Z"></path>
-        </svg>
-      </div>
-
-      <div class="side">
-        <div class="card" id="token">
-          <h3>Token quick info</h3>
-          <div class="kv">
-            <div class="kvrow">
-              <div class="k">Ticker</div>
-              <div class="v" id="tickerText">$TIDE</div>
-            </div>
-            <div class="kvrow">
-              <div class="k">Chain</div>
-              <div class="v" id="chainText">Solana</div>
-            </div>
-            <div class="kvrow">
-              <div class="k">Contract</div>
-              <div class="mono" id="caText">PASTE_CONTRACT_ADDRESS_HERE</div>
-            </div>
-          </div>
-          <div class="hint">Edit these values in the CONFIG section in the script below.</div>
-        </div>
-
-        <div class="card">
-          <h3>What is KingTide?</h3>
-          <p style="margin:0;color:var(--muted)">
-            A simple memecoin brand built around one thing: <b>momentum</b>.
-            When the water starts rising, KingTide moves first.
-          </p>
-          <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap">
-            <span class="pill">No fluff</span>
-            <span class="pill">Clean visuals</span>
-            <span class="pill">Community push</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <section id="about">
-      <div class="grid3">
-        <div class="feature">
-          <h4>Clean, recognizable brand</h4>
-          <p>Minimal wave identity made for PFPs, stickers, banners, and quick recognition.</p>
-        </div>
-        <div class="feature">
-          <h4>Built for momentum</h4>
-          <p>Designed for moments when sentiment flips and everything starts moving at once.</p>
-        </div>
-        <div class="feature">
-          <h4>Community-led</h4>
-          <p>Raids, memes, and collabs—KingTide moves when the community moves.</p>
-        </div>
-      </div>
-    </section>
-
-    <section id="roadmap">
-      <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:14px; flex-wrap:wrap">
-        <div>
-          <div class="pill"><span class="dot"></span>Roadmap</div>
-          <h2 style="margin:10px 0 0; letter-spacing:-.4px">Three waves. One direction.</h2>
-          <p style="margin:8px 0 0; color:var(--muted)">Simple, believable steps that keep the pace.</p>
-        </div>
-      </div>
-
-      <div class="road" style="margin-top:14px">
-        <div class="step">
-          <span class="tag">Wave 1</span>
-          <h4>Launch & Wave Up</h4>
-          <ul>
-            <li>Website + socials live</li>
-            <li>Brand kit + meme pack</li>
-            <li>First community push</li>
-          </ul>
-        </div>
-        <div class="step">
-          <span class="tag">Wave 2</span>
-          <h4>Momentum</h4>
-          <ul>
-            <li>Trackers & listings</li>
-            <li>Spaces + collabs</li>
-            <li>Community contests</li>
-          </ul>
-        </div>
-        <div class="step">
-          <span class="tag">Wave 3</span>
-          <h4>King Season</h4>
-          <ul>
-            <li>Bigger partnerships</li>
-            <li>Optional utility experiments</li>
-            <li>Merch / IRL drops (optional)</li>
-          </ul>
-        </div>
-      </div>
-    </section>
-
-    <section id="community">
-      <div class="card" style="padding:18px">
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap">
-          <div>
-            <div class="pill"><span class="dot"></span>Community</div>
-            <h2 style="margin:10px 0 0; letter-spacing:-.4px">Ride the tide together.</h2>
-            <p style="margin:8px 0 0; color:var(--muted)">
-              Post, raid, meme, and move as one. This doesn’t run without the people.
-            </p>
-          </div>
-          <div class="ctaRow">
-            <a class="btn primary" id="tgBtn" href="#" target="_blank" rel="noopener">Telegram</a>
-            <a class="btn" id="xBtn" href="#" target="_blank" rel="noopener">X (Twitter)</a>
-            <a class="btn" id="dexBtn" href="#" target="_blank" rel="noopener">DEX</a>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <footer>
-      <div>© <span id="year"></span> KingTide. All rights reserved.</div>
-      <div class="links">
-        <a href="#token">Token</a>
-        <a href="#roadmap">Roadmap</a>
-        <a href="#community">Community</a>
-      </div>
-      <div style="max-width:70ch">
-        Disclaimer: KingTide is a meme token for entertainment only and is not financial advice.
-        Crypto assets are volatile; only risk what you can afford to lose.
-      </div>
-    </footer>
-  </div>
-
-  <script>
-    // =========================
-    // CONFIG — EDIT THESE
-    // =========================
-    const CONFIG = {
-      name: "KingTide",
-      ticker: "$TIDE",                 // e.g. $KTIDE
-      chain: "Solana",                 // e.g. Ethereum / Base
-      contractAddress: "PASTE_CONTRACT_ADDRESS_HERE",
-      buyUrl: "https://example.com/buy",        // put your DEX swap link
-      chartUrl: "https://example.com/chart",    // put your chart link
-      telegramUrl: "https://t.me/yourtelegram",
-      xUrl: "https://x.com/yourhandle",
-      dexUrl: "https://example.com/dex"         // optional: birdeye/dextools/dexscreener etc.
-    };
-
-    // Populate UI
-    document.title = CONFIG.name;
-    document.getElementById("tickerText").textContent = CONFIG.ticker;
-    document.getElementById("chainText").textContent = CONFIG.chain;
-    document.getElementById("caText").textContent = CONFIG.contractAddress;
-
-    // Buttons
-    const setLink = (id, url) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.href = url || "#";
-      el.style.opacity = url && !url.includes("example.com") ? "1" : "0.85";
-    };
-
-    setLink("buyBtn", CONFIG.buyUrl);
-    setLink("heroBuy", CONFIG.buyUrl);
-    setLink("chartBtn", CONFIG.chartUrl);
-    setLink("tgBtn", CONFIG.telegramUrl);
-    setLink("heroJoin", CONFIG.telegramUrl);
-    setLink("xBtn", CONFIG.xUrl);
-    setLink("dexBtn", CONFIG.dexUrl);
-
-    // Copy CA
-    const copyBtn = document.getElementById("copyCA");
-    copyBtn.addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText(CONFIG.contractAddress);
-        copyBtn.textContent = "Copied ✓";
-        setTimeout(() => (copyBtn.textContent = "Copy Contract"), 1200);
-      } catch (e) {
-        copyBtn.textContent = "Copy failed";
-        setTimeout(() => (copyBtn.textContent = "Copy Contract"), 1200);
-      }
-    });
-
-    // Year
-    document.getElementById("year").textContent = new Date().getFullYear();
-
-    // Status: if CA is still placeholder, mark as "Draft"
-    const statusText = document.getElementById("statusText");
-    if (CONFIG.contractAddress.includes("PASTE_")) {
-      statusText.textContent = "Draft";
-      statusText.parentElement.style.borderColor = "rgba(255,211,106,.22)";
-      statusText.parentElement.querySelector(".dot").style.background =
-        "linear-gradient(180deg, rgba(255,211,106,1), rgba(255,255,255,.2))";
-    }
-  </script>
+  <script src="./script.js"></script>
 </body>
 </html>
