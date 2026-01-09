@@ -1,3 +1,57 @@
+/* ================================
+   REMOVE LEGACY "OLD UI" PANEL
+   (keeps all sim mechanics intact)
+================================== */
+(function removeOldInspectorUI() {
+  const SELECTORS = [
+    "#selectedPanel",
+    "#inspector",
+    "#colonyInspector",
+    "#traitsPanel",
+    ".selected-panel",
+    ".inspector",
+    ".colony-inspector",
+    ".traits-panel",
+    "[data-ui='legacy']",
+    "[data-panel='legacy']",
+  ];
+
+  function nuke() {
+    // 1) Remove by known selectors
+    for (const sel of SELECTORS) {
+      document.querySelectorAll(sel).forEach(el => el.remove());
+    }
+
+    // 2) Remove any panel that looks like the old inspector (text fingerprint)
+    document.querySelectorAll("div, section, aside").forEach(el => {
+      const t = (el.innerText || "").trim();
+      if (!t) return;
+
+      const looksLikeOld =
+        t.includes("Selected") &&
+        t.includes("Colony") &&
+        t.includes("DNA") &&
+        t.includes("Temperament") &&
+        t.includes("Biome") &&
+        t.includes("Style") &&
+        t.includes("Mutations");
+
+      if (looksLikeOld) el.remove();
+    });
+  }
+
+  // run now + after DOM settles
+  nuke();
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", nuke, { once: true });
+  } else {
+    setTimeout(nuke, 0);
+  }
+
+  // Keep removing it if anything recreates it
+  const obs = new MutationObserver(() => nuke());
+  obs.observe(document.documentElement, { childList: true, subtree: true });
+})();
 (() => {
   "use strict";
 
