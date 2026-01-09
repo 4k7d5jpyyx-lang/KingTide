@@ -3,120 +3,139 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Worm Colony</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <title>Worm Colony — $WORM</title>
+
+  <link rel="preconnect" href="https://i.postimg.cc" crossorigin>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 
 <body>
   <div class="app">
-
-    <!-- Top Bar -->
     <header class="topbar">
       <div class="brand">
-        <img class="brand__icon" src="./logo.png" alt="Worm Colony logo" />
-        <div class="brand__text">
-          <div class="brand__title">Worm Colony</div>
-          <div class="brand__sub">$WORM • LIVE COLONY</div>
+        <img class="brandLogo" id="brandLogo"
+          src="https://i.postimg.cc/hGj8JD0V/1614F03F-52AD-453C-8DB1-09A3B29F3469.png"
+          alt="Worm Colony Logo" />
+        <div class="brandText">
+          <div class="title">Worm Colony</div>
+          <div class="sub">$WORM • LIVE COLONY</div>
         </div>
       </div>
 
-      <div class="status">
+      <div class="statusPill">
         <span class="dot"></span>
         <span id="simStatus">Simulation Active</span>
       </div>
     </header>
 
-    <!-- Simulation first (ALWAYS at top) -->
-    <section class="simcard">
-      <div class="simwrap">
-        <canvas id="simCanvas" aria-label="Worm Colony Simulation"></canvas>
+    <main class="stack">
+      <!-- SIM CARD -->
+      <section class="card simCard">
+        <div class="simWrap">
+          <canvas id="simCanvas"></canvas>
 
-        <!-- Small overlay help text inside the sim card (not over the canvas drawing) -->
-        <div class="simhint">
+          <!-- Overlay: colony inspector -->
+          <div class="inspector" id="inspector">
+            <div class="inspectorTop">
+              <div class="inspectorTitle">
+                <span class="pill">Selected</span>
+                <span id="selName">Colony #1</span>
+              </div>
+              <button class="iconBtn" id="toggleInspector" title="Hide/Show">
+                ▾
+              </button>
+            </div>
+
+            <div class="inspectorBody" id="inspectorBody">
+              <div class="grid2">
+                <div class="kv">
+                  <div class="k">DNA</div>
+                  <div class="v" id="dnaVal">—</div>
+                </div>
+                <div class="kv">
+                  <div class="k">Temperament</div>
+                  <div class="v" id="tempVal">—</div>
+                </div>
+                <div class="kv">
+                  <div class="k">Biome</div>
+                  <div class="v" id="biomeVal">—</div>
+                </div>
+                <div class="kv">
+                  <div class="k">Style</div>
+                  <div class="v" id="styleVal">—</div>
+                </div>
+              </div>
+
+              <div class="mutBox">
+                <div class="mutHdr">Mutations</div>
+                <div class="mutList" id="mutList"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Overlay: debug toast -->
+          <div class="toast" id="toast">Loading…</div>
+        </div>
+
+        <div class="hint">
           Tap colonies • Drag pan • Pinch zoom • Double tap center
         </div>
+      </section>
 
-        <!-- Debug / errors -->
-        <div id="dbg" class="dbg">Loading…</div>
-      </div>
-    </section>
+      <!-- STATS -->
+      <section class="card statsCard">
+        <div class="statsGrid">
+          <div class="stat">
+            <div class="label">Buyers</div>
+            <div class="value" id="buyers">0</div>
+          </div>
+          <div class="stat">
+            <div class="label">Volume</div>
+            <div class="value" id="volume">$0</div>
+          </div>
+          <div class="stat">
+            <div class="label">M Cap</div>
+            <div class="value" id="mcap">$0</div>
+          </div>
+          <div class="stat">
+            <div class="label">Colonies</div>
+            <div class="value" id="colonies">1</div>
+          </div>
+          <div class="stat">
+            <div class="label">Worms</div>
+            <div class="value" id="worms">0</div>
+          </div>
+        </div>
+      </section>
 
-    <!-- UI below sim -->
-    <section class="panel">
+      <!-- CONTROLS -->
+      <section class="card controlsCard">
+        <div class="btnGrid">
+          <button class="neonBtn" data-action="feed">Feed</button>
+          <button class="neonBtn alt" data-action="smallBuy">Small Buy</button>
 
-      <div class="grid2">
-        <div class="stat">
-          <div class="stat__label">Buyers</div>
-          <div class="stat__value" id="buyers">0</div>
-        </div>
-        <div class="stat">
-          <div class="stat__label">Volume</div>
-          <div class="stat__value" id="volume">$0</div>
-        </div>
-        <div class="stat">
-          <div class="stat__label">M Cap</div>
-          <div class="stat__value" id="mcap">$0</div>
-        </div>
-        <div class="stat">
-          <div class="stat__label">Colonies</div>
-          <div class="stat__value" id="colonies">1</div>
-        </div>
-        <div class="stat">
-          <div class="stat__label">Worms</div>
-          <div class="stat__value" id="worms">3</div>
-        </div>
-        <div class="stat stat--wide">
-          <div class="stat__label">Selected</div>
-          <div class="stat__value" id="selectedName">Colony #1</div>
-        </div>
-      </div>
+          <button class="neonBtn" data-action="whaleBuy">Whale Buy</button>
+          <button class="neonBtn danger" data-action="sell">Sell-off</button>
 
-      <div class="inspect">
-        <div class="inspect__title">Colony Traits</div>
-        <div class="inspect__row">
-          <div class="k">DNA</div>
-          <div class="v" id="dna">—</div>
+          <button class="neonBtn alt" data-action="storm">Volume Storm</button>
+          <button class="neonBtn" data-action="mutate">Mutate</button>
+
+          <button class="neonBtn" data-action="focus" id="focusBtn">Focus: Off</button>
+          <button class="neonBtn alt" data-action="zoomIn">Zoom +</button>
+
+          <button class="neonBtn alt" data-action="zoomOut">Zoom −</button>
+          <button class="neonBtn" data-action="capture">Capture</button>
+
+          <button class="neonBtn danger wide" data-action="reset">Reset</button>
         </div>
-        <div class="inspect__row">
-          <div class="k">Biome</div>
-          <div class="v" id="biome">—</div>
-        </div>
-        <div class="inspect__row">
-          <div class="k">Style</div>
-          <div class="v" id="style">—</div>
-        </div>
-        <div class="inspect__row">
-          <div class="k">Temperament</div>
-          <div class="v" id="temperament">—</div>
-        </div>
-      </div>
+      </section>
+    </main>
 
-      <div class="btnGrid">
-        <button class="btn btn--neon" data-action="feed">Feed</button>
-        <button class="btn btn--neon btn--blue" data-action="smallBuy">Small Buy</button>
-        <button class="btn btn--neon btn--purple" data-action="whaleBuy">Whale Buy</button>
-        <button class="btn btn--neon btn--red" data-action="sell">Sell-off</button>
-
-        <button class="btn btn--neon btn--amber" data-action="storm">Volume Storm</button>
-        <button class="btn btn--neon" data-action="mutate">Mutate</button>
-        <button class="btn btn--neon" data-action="focus" id="focusBtn">Focus: Off</button>
-        <button class="btn btn--neon" data-action="zoomIn">Zoom +</button>
-
-        <button class="btn btn--neon" data-action="zoomOut">Zoom −</button>
-        <button class="btn btn--neon btn--blue" data-action="capture">Capture</button>
-        <button class="btn btn--neon btn--red btn--wide" data-action="reset">Reset</button>
-      </div>
-
-      <div class="log">
-        <div class="log__title">Mutation Log</div>
-        <div id="log" class="log__body"></div>
-      </div>
-
-    </section>
-
+    <footer class="foot">
+      <span>© Worm Colony</span>
+    </footer>
   </div>
 
-  <!-- IMPORTANT: load JS at end so elements exist -->
-  <script src="./script.js"></script>
+  <script src="script.js" defer></script>
 </body>
 </html>
