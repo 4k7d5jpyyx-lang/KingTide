@@ -261,7 +261,7 @@ body{
   margin-bottom:6px;
 }
 
-/* 👇 SNAP INSPECTOR LEFT ON SMALL SCREENS */
+/* SNAP INSPECTOR LEFT ON SMALL SCREENS */
 @media (max-width: 720px){
   .inspector{
     left: 12px;
@@ -345,7 +345,7 @@ body{
   border-radius: 16px;
   border:1px solid rgba(255,255,255,.10);
   background: rgba(0,0,0,.22);
-  max-height: 240px;         /* cap, then scroll */
+  max-height: 240px;
   overflow:auto;
   padding:10px;
 }
