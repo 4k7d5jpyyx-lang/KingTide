@@ -1920,3 +1920,96 @@
   window.addEventListener("load", boot);
   if (document.readyState === "complete") boot();
 })();
+/* ============================
+   CINEMATIC BOSS CAMERA PULL
+   Safe additive patch
+   ============================ */
+
+(() => {
+  if (typeof announceBossSpawn !== "function") return;
+
+  let camRestore = null;
+  let camAnim = null;
+
+  function easeInOut(t) {
+    return t < 0.5
+      ? 2 * t * t
+      : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  }
+
+  function startBossCameraPull(worm) {
+    if (!worm || !worm.segs || !worm.segs[0]) return;
+    if (camAnim) return;
+
+    const head = worm.segs[0];
+
+    camRestore = {
+      x: camX,
+      y: camY,
+      z: zoom
+    };
+
+    const targetX = -head.x;
+    const targetY = -head.y;
+    const targetZ = Math.min(zoom * 1.35, 1.8);
+
+    const start = performance.now();
+    const pullTime = 900;
+    const holdTime = 600;
+    const returnTime = 900;
+
+    camAnim = { phase: "in" };
+
+    function animate(now) {
+      if (!camAnim) return;
+
+      let t;
+      if (camAnim.phase === "in") {
+        t = Math.min((now - start) / pullTime, 1);
+        t = easeInOut(t);
+
+        camX = camRestore.x + (targetX - camRestore.x) * t;
+        camY = camRestore.y + (targetY - camRestore.y) * t;
+        zoom = camRestore.z + (targetZ - camRestore.z) * t;
+
+        if (t >= 1) {
+          camAnim.phase = "hold";
+          camAnim.holdStart = now;
+        }
+      }
+
+      else if (camAnim.phase === "hold") {
+        if (now - camAnim.holdStart >= holdTime) {
+          camAnim.phase = "out";
+          camAnim.outStart = now;
+        }
+      }
+
+      else if (camAnim.phase === "out") {
+        t = Math.min((now - camAnim.outStart) / returnTime, 1);
+        t = easeInOut(t);
+
+        camX = targetX + (camRestore.x - targetX) * t;
+        camY = targetY + (camRestore.y - targetY) * t;
+        zoom = targetZ + (camRestore.z - targetZ) * t;
+
+        if (t >= 1) {
+          camAnim = null;
+        }
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    requestAnimationFrame(animate);
+  }
+
+  // Hook into boss spawn
+  const _announceBossSpawn = announceBossSpawn;
+  window.announceBossSpawn = function(name, wormRef) {
+    _announceBossSpawn(name);
+    if (wormRef) {
+      setTimeout(() => startBossCameraPull(wormRef), 120);
+    }
+  };
+})();
